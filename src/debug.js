@@ -30,16 +30,17 @@ export function maskCookieString(value) {
     .join('; ');
 }
 
-export function redactHeader(name, value) {
+export function redactHeader(name, value, url) {
   const key = String(name).toLowerCase();
+  if (key === 'location' || key === 'referer') return redactUrl(value, url);
   if (!SECRET_HEADERS.has(key)) return String(value);
   if (key === 'cookie') return maskCookieString(value);
   return `<redacted ${String(value).length}B>`;
 }
 
-export function redactUrl(input) {
+export function redactUrl(input, base) {
   try {
-    const url = new URL(String(input));
+    const url = new URL(String(input), base);
     for (const key of [...url.searchParams.keys()]) {
       if (SECRET_PARAMS.has(key.toLowerCase())) {
         const len = (url.searchParams.get(key) ?? '').length;
@@ -66,9 +67,9 @@ export function redactBody(body, contentType = '') {
     .join('&');
 }
 
-function headerLines(headers) {
+function headerLines(headers, url) {
   const out = [];
-  for (const [k, v] of headers) out.push(`       ${k}: ${redactHeader(k, v)}`);
+  for (const [k, v] of headers) out.push(`       ${k}: ${redactHeader(k, v, url)}`);
   const setCookies = typeof headers.getSetCookie === 'function' ? headers.getSetCookie() : [];
   for (const c of setCookies) out.push(`       set-cookie: ${maskCookieString(c)}`);
   return out;
@@ -78,7 +79,7 @@ export function logRequest(method, url, headers = {}) {
   if (!debug.enabled) return;
   const lines = [`[http] → ${method} ${redactUrl(url)}`];
   for (const [k, v] of Object.entries(headers)) {
-    lines.push(`       ${k}: ${redactHeader(k, Array.isArray(v) ? v.join('; ') : v)}`);
+    lines.push(`       ${k}: ${redactHeader(k, Array.isArray(v) ? v.join('; ') : v, url)}`);
   }
   process.stderr.write(lines.join('\n') + '\n');
 }
@@ -90,7 +91,7 @@ export function logResponse(method, url, status, headers, bodyText, totalBytes) 
   const lines = [
     `[http] ← ${status} ${method} ${redactUrl(url)}${size != null ? ` (${size}B${ct ? `, ${ct.split(';')[0]}` : ''})` : ''}`,
   ];
-  lines.push(...headerLines(headers));
+  lines.push(...headerLines(headers, url));
 
   if (bodyText != null) {
     let shown = bodyText;

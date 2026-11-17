@@ -82,7 +82,8 @@ TronClass 命名坑：公告叫 `bulletins`、资料是 `activities` 的一种�
 
 - 列表接口返回 `submitted`（bool）、`end_time`、`score`（字符串）、`score_percentage`；
 - 详情在 `/api/activities/{id}`，要求正文是 `data.description`（HTML）；
-- `xdc ddl` 默认只扫当前学期，按 `due_at` 升序，`--pending` 过滤已交。
+- `xdc ddl` 默认只查当前学期，排除已提交项，按 `due_at` 升序。指定 `--days N` 时只查时间窗口内即将到期的作业。
+- `submitted: null` 表示平台未提供可确认的提交状态。`partial: true` 表示查询结果包含课程级错误，详见 `errors`。
 
 ## 6. 错误与健康检查
 

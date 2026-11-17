@@ -164,7 +164,7 @@ export async function passwordLogin({ username, password, jar, log = () => {} })
     });
   }
 
-  log('→ 获取公钥并加密口令（反转 + RSA PKCS#1 v1.5）…');
+  log('→ 获取公钥并按统一认证网页的规则加密口令…');
   const { modulus, exponent } = await getPubKey(jar);
 
   const form = new URLSearchParams();

@@ -5,6 +5,7 @@
 // unauthenticated calls get an HTML redirect instead of a 401.
 
 import { request } from './http.js';
+import { redactUrl } from './debug.js';
 import { classifyFailure } from './health.js';
 import { inferSemesterFromDate, parseSemesterFromCode, parseSemesterLabel } from './terms.js';
 
@@ -46,6 +47,8 @@ export class Api {
   /** Low-level call. Returns { status, ok, json, text, headers }. */
   async call(method, path, opts = {}) {
     const { query, json, form, headers = {}, timeoutMs } = opts;
+    method = method.toUpperCase();
+    const retries = ['GET', 'HEAD', 'OPTIONS'].includes(method) ? this.retries : 0;
     const url = this.url(path, query);
     const h = {
       accept: 'application/json, text/plain, */*',
@@ -63,7 +66,7 @@ export class Api {
     }
 
     let lastErr;
-    for (let attempt = 0; attempt <= this.retries; attempt++) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
       let res;
       try {
         ({ res } = await request(url, {
@@ -75,7 +78,7 @@ export class Api {
         }));
       } catch (e) {
         lastErr = e;
-        if (attempt < this.retries) {
+        if (attempt < retries) {
           await sleep(400 * (attempt + 1));
           continue;
         }
@@ -84,7 +87,7 @@ export class Api {
       }
 
       if (this.verbose) {
-        process.stderr.write(`[api] ${method} ${url.replace(this.baseUrl, '')} -> ${res.status}\n`);
+        process.stderr.write(`[api] ${method} ${redactUrl(url).replace(this.baseUrl, '')} -> ${res.status}\n`);
       }
       const buf = Buffer.from(await res.arrayBuffer());
       const bodyText = buf.toString('utf8');
@@ -98,7 +101,7 @@ export class Api {
         }
       }
 
-      if ((res.status === 429 || res.status >= 500) && attempt < this.retries) {
+      if ((res.status === 429 || res.status >= 500) && attempt < retries) {
         const ra = Number(res.headers.get('retry-after'));
         await sleep(Number.isFinite(ra) && ra > 0 ? ra * 1000 : 600 * (attempt + 1));
         continue;

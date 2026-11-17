@@ -45,7 +45,7 @@ xdc assignments --course 678 --json    # 单课程作业
 xdc assignment 678 12345 --json        # 作业要求（正文/附件/状态）
 xdc assignment 678 12345 --download ./hw
 xdc submit 678 12345 --text "..."      # 默认 dry-run，--yes 才提交（接口未验证）
-xdc ddl --json                         # 未提交作业 + DDL（默认当前学期）
+xdc ddl --json                         # 未提交或状态未知的作业（默认当前学期）
 xdc ddl --days 7 --json                # 只看 7 天内到期
 xdc watch --once --json                # 单次扫描点名；去掉 --once 常驻盯
 xdc todos --json                       # 待办
@@ -100,7 +100,7 @@ xdc api GET /api/user --compact
 ## 排查
 
 ```bash
-xdc login --debug 2> login.log          # 请求/响应全量（Cookie、ticket 已脱敏）
+xdc login --debug 2> login.log          # 常见 Cookie 和票据会遮盖，响应正文可能含个人信息
 xdc courses --debug --debug-full 2> api.log
 ```
 

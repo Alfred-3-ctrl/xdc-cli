@@ -1,4 +1,7 @@
 node_modules/
 *.log
 .env
+.env.*
+session.json
+session.json.*.tmp
 .probe/

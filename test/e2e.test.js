@@ -15,7 +15,7 @@ import { saveSession, jarFromCookieString } from '../src/session.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(here, '..', 'bin', 'xdc.js');
 
-function startMock({ unauthorized = false, failMode = null } = {}) {
+function startMock({ unauthorized = false, failMode = null, unavailableCourse = null, onWrite = () => {} } = {}) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const json = (obj, status = 200) => {
@@ -34,10 +34,17 @@ function startMock({ unauthorized = false, failMode = null } = {}) {
 
     const hw = /^\/api\/courses\/(\d+)\/homework-activities$/.exec(url.pathname);
     if (hw) {
+      if (hw[1] === unavailableCourse) return json({ message: 'Unavailable course' }, 403);
       if (hw[1] !== '678') return json({ page: 1, pages: 1, total: 0, homework_activities: [] });
     }
 
     switch (url.pathname) {
+      case '/api/mock-redirect':
+        res.writeHead(302, { location: '/api/profile?ticket=mock-cas-ticket' });
+        return res.end();
+      case '/api/mock-write':
+        onWrite();
+        return json({ message: 'Unavailable' }, 503);
       case '/api/profile':
         return json({ id: 284203, name: '测试用户', user_no: 'tester', email: 't@example.com', role: 'Student' });
       case '/api/user':
@@ -191,9 +198,10 @@ function startMock({ unauthorized = false, failMode = null } = {}) {
   });
 }
 
-function run(args, env) {
+function run(args, env, now = '2026-10-27T00:00:00Z') {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [BIN, ...args], {
+    const clock = `data:text/javascript,Date.now%20%3D%20()%20%3D%3E%20${Date.parse(now)}`;
+    const child = spawn(process.execPath, ['--import', clock, BIN, ...args], {
       env: { ...env, NO_COLOR: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -378,6 +386,11 @@ test('--debug traces to stderr without polluting stdout JSON or leaking cookies'
     assert.match(r.stderr, /body: /);
     assert.doesNotMatch(r.stderr, /session=test-session/);
     assert.match(r.stderr, /session=<12B>/);
+
+    const redirect = await run(['api', 'GET', '/api/mock-redirect', '--debug'], env);
+    assert.equal(redirect.code, 0, redirect.stderr);
+    assert.match(redirect.stderr, /location: .*ticket=/);
+    assert.doesNotMatch(redirect.stderr, /mock-cas-ticket/);
   } finally {
     server.close();
   }
@@ -487,6 +500,44 @@ test('ddl lists only unsubmitted homework of the current term', async () => {
     assert.equal(payload.data[0].title, '实验一：链表');
     assert.equal(payload.data[0].submitted, null);
     assert.equal(payload.data[0].state, 'pending');
+    assert.equal(payload.partial, false);
+
+    const later = '2026-11-02T00:00:00Z';
+    const overdue = await run(['ddl', '--json'], env, later);
+    assert.equal(JSON.parse(overdue.stdout).data[0].state, 'overdue');
+    const upcoming = await run(['ddl', '--days', '7', '--json'], env, later);
+    assert.equal(JSON.parse(upcoming.stdout).count, 0);
+    const withinWindow = await run(['ddl', '--days', '7', '--json'], env);
+    assert.equal(JSON.parse(withinWindow.stdout).count, 1);
+  } finally {
+    server.close();
+  }
+});
+
+test('ddl reports missing course results in the JSON envelope', async () => {
+  const { server, port } = await startMock({ unavailableCourse: '679' });
+  try {
+    const { env } = sandbox(port);
+    const r = await run(['ddl', '--json'], env);
+    assert.equal(r.code, 0, r.stderr);
+    const payload = JSON.parse(r.stdout);
+    assert.equal(payload.partial, true);
+    assert.deepEqual(payload.errors.map(({ course_id, code }) => [course_id, code]), [[679, 'FORBIDDEN']]);
+    assert.equal(payload.count, 1);
+  } finally {
+    server.close();
+  }
+});
+
+test('write requests are not retried after a gateway error', async () => {
+  let writes = 0;
+  const { server, port } = await startMock({ onWrite: () => { writes++; } });
+  try {
+    const { env } = sandbox(port);
+    const r = await run(['api', 'POST', '/api/mock-write', '--json-body', '{}'], env);
+    assert.equal(r.code, 1);
+    assert.equal(JSON.parse(r.stderr).error.code, 'SERVICE_UNAVAILABLE');
+    assert.equal(writes, 1);
   } finally {
     server.close();
   }

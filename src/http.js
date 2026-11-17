@@ -161,8 +161,6 @@ export async function request(url, opts = {}) {
       const totalBytes = Number.isFinite(declared) && declared > 0 ? declared : null;
       const bodyText = await peekBody(res, totalBytes ?? 0);
       logResponse(currentMethod, current.toString(), res.status, res.headers, bodyText, totalBytes);
-      const location = res.headers.get('location');
-      if (location) process.stderr.write(`[http] ↪ ${location}\n`);
     }
 
     const loc = res.headers.get('location');

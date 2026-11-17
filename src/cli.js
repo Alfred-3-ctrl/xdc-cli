@@ -36,7 +36,7 @@ import {
   sessionPath,
 } from './session.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 const EXIT = { OK: 0, ERROR: 1, AUTH: 2, NOT_FOUND: 3, NETWORK: 4, USAGE: 5 };
 
@@ -1223,6 +1223,11 @@ async function cmdDiscover(flags) {
 }
 
 async function cmdDdl(flags) {
+  const now = Date.now();
+  const days = flags.days === undefined ? null : Number(flags.days);
+  if (days !== null && (!Number.isFinite(days) || days <= 0)) {
+    throw usageError('--days 需要大于 0 的数字');
+  }
   const api = getApi(flags);
   const all = await api.myCourses();
   let courses;
@@ -1243,10 +1248,9 @@ async function cmdDdl(flags) {
       for (const raw of await api.homeworkActivities(course.id)) {
         const a = normAssignment(raw, course);
         if (a.submitted === true) continue;
-        if (flags.days) {
-          if (!a.due_at) continue;
-          const limit = Date.now() + Number(flags.days) * 86400000;
-          if (Date.parse(a.due_at) > limit) continue;
+        if (days !== null) {
+          const due = Date.parse(a.due_at);
+          if (!Number.isFinite(due) || due < now || due > now + days * 86400000) continue;
         }
         pending.push(a);
       }
@@ -1266,21 +1270,24 @@ async function cmdDdl(flags) {
   render(data, flags, {
     count: data.length,
     total: pending.length,
+    partial: errors.length > 0,
     errors: errors.length ? errors : undefined,
     table: data.length
       ? {
-          headers: ['截止', '剩余', '课程', '作业'],
+          headers: ['截止', '剩余', '课程', '作业', '提交状态'],
           rows: data.map((a) => [
             fmtLocal(a.due_at) || '无截止',
             a.due_in ?? '',
             clip(a.course ?? a.course_id ?? '', 16),
             clip(a.title ?? '', 38),
+            a.submitted === null ? '未知' : '未提交',
           ]),
         }
       : undefined,
-    lines: data.length
-      ? [`${data.length} 个未提交作业`]
-      : ['没有未提交的作业 🎉'],
+    lines: [
+      ...(errors.length ? [`查询不完整，${errors.length} 门课程查询失败`] : []),
+      `找到 ${data.length} 个未提交或状态未知的作业`,
+    ],
   });
 }
 
@@ -1472,7 +1479,7 @@ const HELP = `xdc — 学在浙大 (courses.zju.edu.cn) 命令行 / CLI for ZJU 
   xdc submit <courseId> <activityId> --text "..." [--yes]
                                                提交作业文本（默认 dry-run）
   xdc ddl [--current|--all] [--days N] [--limit N]
-                                               未提交作业 + 截止时间（默认当前学期）
+                                               未提交或状态未知的作业（默认当前学期）
   xdc watch [--interval 60] [--once] [--course <id>]
                                                盯点名，出现即响铃/输出事件
   xdc todos [--limit N]                        待办
@@ -1496,7 +1503,7 @@ const HELP = `xdc — 学在浙大 (courses.zju.edu.cn) 命令行 / CLI for ZJU 
   --full       返回未经裁剪的原始对象
   --fields a,b JSON 只保留指定字段（省 token）
   --verbose    把流程步骤打印到 stderr
-  --debug      打印每个请求/响应（含响应体）到 stderr，敏感值自动脱敏
+  --debug      打印请求和响应到 stderr，响应正文可能含个人信息
   --debug-full 响应体不截断（默认 4096 字符，可用 --debug-max 调整）
 
 环境变量:
