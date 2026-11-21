@@ -220,7 +220,9 @@ export class ClassroomClient {
       if (!/^\d+$/.test(total) || Number(total) > MAX_PAGES || !Array.isArray(result?.list)) {
         throw invalidResponse('智云课堂课件页数无效或超过单节课堂的处理限制');
       }
-      if (result.list.length !== Math.min(PAGE_SIZE, Number(total) - slides.length)) {
+      const remaining = Number(total) - slides.length;
+      // Some live responses return all remaining slides in one batch, ignoring per_page.
+      if (result.list.length !== remaining && result.list.length !== Math.min(PAGE_SIZE, remaining)) {
         throw invalidResponse(`智云课堂幻灯片列表第 ${page} 批不完整，请刷新后重试`);
       }
       for (const item of result.list) {

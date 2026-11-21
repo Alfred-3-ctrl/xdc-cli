@@ -103,7 +103,7 @@ $ xdc courses --current
 
 `materials --include-homework` 会把作业附件纳入清单。`--file` 可重复指定附件 ID。下载结果中的 `format` 为 `original` 或 `preview_pdf`，预览版文件以 `.preview.pdf` 结尾。WPS 预览导出要求平台明确授权，缺少授权信息时返回 `WPS_PERMISSION_UNKNOWN`。批量结果通过 `data.partial`、`data.errors` 和 `data.failed` 报告未完成项。
 
-智云导出将一节课堂的 JPG 或 PNG 幻灯片按顺序合成 PDF。缺页会返回 `CLASSROOM_PARTIAL_EXPORT` 和 `missing_pages`。这些新接口已经过模拟测试，仍需用真实课堂和 WPS 附件验证。
+智云导出将一节课堂的 JPG 或 PNG 幻灯片按顺序合成 PDF。缺页会返回 `CLASSROOM_PARTIAL_EXPORT` 和 `missing_pages`。已用真实账号验证双平台登录、课程资料和作业附件下载、WPS 原文件下载及智云 PDF 导出。实测的仅预览 WPS 样本未提供可确认的导出授权。
 
 ## 限制
 

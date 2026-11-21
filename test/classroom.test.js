@@ -91,6 +91,21 @@ test('classroom paginates slides in API order', async () => {
     Array.from({ length: 101 }, (_, index) => [index + 1, `https://cdn.zju.edu.cn/${index + 1}.png`]));
 });
 
+test('classroom accepts a complete first batch that exceeds the requested batch size', async () => {
+  const client = new ClassroomClient({
+    jar: jarWithSession(),
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      assert.equal(url.searchParams.get('page'), '1');
+      assert.equal(url.searchParams.get('per_page'), '100');
+      return slideList(Array.from({ length: 224 }, (_, index) => index + 1));
+    },
+  });
+  const slides = await client.slides('77', '54');
+  assert.equal(slides.length, 224);
+  assert.deepEqual(slides.at(-1), { page: 224, url: 'https://cdn.zju.edu.cn/224.png' });
+});
+
 test('classroom exports an ordered PDF and leaves no final file for missing pages', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'xdc-classroom-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
