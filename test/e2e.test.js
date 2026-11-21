@@ -147,6 +147,11 @@ function startMock({ unauthorized = false, failMode = null, unavailableCourse = 
         });
       case '/api/uploads/111/url':
         return json({ url: `http://${req.headers.host}/files/ch1.pdf` });
+      case '/api/uploads/21/url':
+        return json({ url: `http://${req.headers.host}/files/spec.pdf` });
+      case '/files/spec.pdf':
+        res.writeHead(200, { 'content-type': 'application/pdf' });
+        return res.end('pdf');
       case '/api/courses/679/modules/rollcalls':
         return json({
           rollcalls: [
@@ -354,6 +359,25 @@ test('materials lists files and downloads them with a safe name', async () => {
     );
   } finally {
     server.close();
+  }
+});
+
+test('materials can select and download an attachment discovered through homework detail', async () => {
+  const { server, port } = await startMock();
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'xdc-homework-dl-'));
+  try {
+    const { env } = sandbox(port);
+    const r = await run(['materials', '678', '--include-homework', '--file', '21', '--download', out, '--json'], env);
+    assert.equal(r.code, 0, r.stderr);
+    const { data } = JSON.parse(r.stdout);
+    assert.equal(data.partial, false);
+    assert.deepEqual(data.attachments.map(({ id, kind }) => [id, kind]), [[21, 'homework']]);
+    assert.equal(data.downloaded.length, 1);
+    assert.equal(data.downloaded[0].format, 'original');
+    assert.equal(fs.readFileSync(data.downloaded[0].path, 'utf8'), 'pdf');
+  } finally {
+    server.close();
+    fs.rmSync(out, { force: true, recursive: true });
   }
 });
 

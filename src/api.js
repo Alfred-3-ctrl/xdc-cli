@@ -5,11 +5,15 @@
 // unauthenticated calls get an HTML redirect instead of a 401.
 
 import { request } from './http.js';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { redactUrl } from './debug.js';
 import { classifyFailure } from './health.js';
 import { inferSemesterFromDate, parseSemesterFromCode, parseSemesterLabel } from './terms.js';
 
 export const DEFAULT_BASE = 'https://courses.zju.edu.cn';
+const MATERIAL_TYPES = new Set(['material', 'page', 'web_link', 'document', 'file', 'video', 'audio']);
+
+export const isCourseMaterial = (activity) => MATERIAL_TYPES.has(activity?.type);
 
 export class ApiError extends Error {
   constructor(message, { status = 0, code = 'API_ERROR', body, hint } = {}) {
@@ -21,8 +25,6 @@ export class ApiError extends Error {
     this.hint = hint;
   }
 }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class Api {
   constructor({ baseUrl = DEFAULT_BASE, jar, timeoutMs = 30000, retries = 2, onAuthRequired, verbose = false } = {}) {
@@ -46,7 +48,7 @@ export class Api {
 
   /** Low-level call. Returns { status, ok, json, text, headers }. */
   async call(method, path, opts = {}) {
-    const { query, json, form, headers = {}, timeoutMs } = opts;
+    const { query, json, form, headers = {}, timeoutMs, signal, trace = true, validateUrl } = opts;
     method = method.toUpperCase();
     const retries = ['GET', 'HEAD', 'OPTIONS'].includes(method) ? this.retries : 0;
     const url = this.url(path, query);
@@ -68,6 +70,7 @@ export class Api {
     let lastErr;
     for (let attempt = 0; attempt <= retries; attempt++) {
       let res;
+      let bodyText;
       try {
         ({ res } = await request(url, {
           method,
@@ -75,22 +78,25 @@ export class Api {
           body,
           jar: this.jar,
           timeoutMs: timeoutMs ?? this.timeoutMs,
+          signal,
+          trace,
+          validateUrl,
         }));
+        bodyText = await res.text();
       } catch (e) {
+        if (signal?.aborted || e instanceof ApiError) throw e;
         lastErr = e;
         if (attempt < retries) {
-          await sleep(400 * (attempt + 1));
+          await sleep(400 * (attempt + 1), undefined, { signal });
           continue;
         }
         const hint = classifyFailure(0)?.hint;
         throw new ApiError(`网络请求失败: ${e.message}`, { code: 'NETWORK', hint });
       }
 
-      if (this.verbose) {
+      if (trace && this.verbose) {
         process.stderr.write(`[api] ${method} ${redactUrl(url).replace(this.baseUrl, '')} -> ${res.status}\n`);
       }
-      const buf = Buffer.from(await res.arrayBuffer());
-      const bodyText = buf.toString('utf8');
       let parsed;
       const ctype = res.headers.get('content-type') ?? '';
       if (/json/i.test(ctype) || /^[\s]*[{[]/.test(bodyText)) {
@@ -103,8 +109,11 @@ export class Api {
 
       if ((res.status === 429 || res.status >= 500) && attempt < retries) {
         const ra = Number(res.headers.get('retry-after'));
-        await sleep(Number.isFinite(ra) && ra > 0 ? ra * 1000 : 600 * (attempt + 1));
-        continue;
+        const delay = Number.isFinite(ra) && ra > 0 ? ra * 1000 : 600 * (attempt + 1);
+        if (delay <= 30_000) {
+          await sleep(delay, undefined, { signal });
+          continue;
+        }
       }
 
       if (res.status === 401) {
@@ -305,14 +314,12 @@ export class Api {
    */
   async courseMaterials(courseId) {
     const acts = await this.courseActivities(courseId);
-    return acts.filter((a) =>
-      ['material', 'page', 'web_link', 'document', 'file', 'video', 'audio'].includes(a.type),
-    );
+    return acts.filter(isCourseMaterial);
   }
 
   /** Signed download URL for an upload (host tcmedia.zju.edu.cn, token-bound). */
-  async uploadUrl(uploadId) {
-    const j = await this.getJson(`/api/uploads/${uploadId}/url`);
+  async uploadUrl(uploadId, opts) {
+    const j = await this.getJson(`/api/uploads/${uploadId}/url`, opts);
     if (!j?.url) throw new ApiError('未取得下载链接（可能不允许下载）', { code: 'NO_DOWNLOAD_URL' });
     return j.url;
   }

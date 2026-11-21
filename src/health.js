@@ -69,7 +69,7 @@ export async function checkPlatform(api, { timeoutMs = 15000 } = {}) {
   const platform = broken.length === 0 ? 'ok' : broken.length === checks.length ? 'down' : 'degraded';
   return {
     platform,
-    reachable: checks.some((c) => c.status !== null),
+    reachable: checks.some((c) => c.status > 0),
     latency_ms: Math.max(...checks.map((c) => c.ms)),
     checked_at: new Date().toISOString(),
     checks,

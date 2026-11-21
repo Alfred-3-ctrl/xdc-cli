@@ -11,13 +11,13 @@ export function configDir() {
   return path.join(base, 'xdc-cli');
 }
 
-export function sessionPath() {
-  return path.join(configDir(), 'session.json');
+export function sessionPath(service = 'courses') {
+  return path.join(configDir(), service === 'classroom' ? 'classroom-session.json' : 'session.json');
 }
 
-export function loadSession() {
+export function loadSession(service) {
   try {
-    const raw = fs.readFileSync(sessionPath(), 'utf8');
+    const raw = fs.readFileSync(sessionPath(service), 'utf8');
     const data = JSON.parse(raw);
     return {
       jar: CookieJar.fromJSON(data.cookies ?? []),
@@ -31,7 +31,7 @@ export function loadSession() {
   }
 }
 
-export function saveSession({ jar, username, baseUrl, meta = {} }) {
+export function saveSession({ jar, username, baseUrl, meta = {}, service }) {
   const dir = configDir();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const payload = {
@@ -42,7 +42,7 @@ export function saveSession({ jar, username, baseUrl, meta = {} }) {
     meta,
     cookies: jar.toJSON(),
   };
-  const file = sessionPath();
+  const file = sessionPath(service);
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, file);
@@ -52,9 +52,9 @@ export function saveSession({ jar, username, baseUrl, meta = {} }) {
   return file;
 }
 
-export function clearSession() {
+export function clearSession(service) {
   try {
-    fs.unlinkSync(sessionPath());
+    fs.unlinkSync(sessionPath(service));
     return true;
   } catch {
     return false;
@@ -76,7 +76,7 @@ export function jarFromCookieString(str, domain = 'courses.zju.edu.cn') {
     const name = part.slice(0, idx).trim();
     const value = part.slice(idx + 1).trim();
     if (!name) continue;
-    jar.add({ name, value, domain, path: '/', expires: null });
+    jar.add({ name, value, domain, path: '/', expires: null, hostOnly: true });
   }
   if (!jar.cookies.size) throw new Error('cookie 字符串为空或格式不正确');
   return jar;

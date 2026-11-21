@@ -7,18 +7,20 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { CookieJar } from './http.js';
 import { passwordLogin, AuthError } from './cas.js';
+import { ClassroomClient, CLASSROOM_ORIGIN } from './classroom.js';
+import { connectClassroom } from './classroom-auth.js';
 import {
   Api,
   ApiError,
   DEFAULT_BASE,
   normAssignment,
   normAssignmentDetail,
-  normMaterial,
   normNotification,
   normRollcall,
   normTodo,
 } from './api.js';
 import { configureDebug } from './debug.js';
+import { downloadLearningAttachments, learningActivityAttachments, listLearningAttachments } from './learning.js';
 import { checkPlatform } from './health.js';
 import {
   compareCourses,
@@ -46,12 +48,12 @@ const env = (name) => process.env[`XD_${name}`] ?? process.env[`ZJU_${name}`];
 const VALUE_FLAGS = new Set([
   'username', 'password', 'cookie', 'cookie-file', 'course', 'semester',
   'limit', 'base', 'query', 'header', 'json-body', 'form', 'download', 'debug-max',
-  'page', 'page-size', 'fields', 'days', 'interval', 'exec', 'text',
+  'page', 'page-size', 'fields', 'days', 'interval', 'exec', 'text', 'month', 'output', 'file',
 ]);
 const BOOL_FLAGS = new Set([
   'json', 'pretty', 'raw', 'full', 'all', 'help', 'version', 'force',
   'verbose', 'compact', 'active', 'debug', 'debug-full', 'current', 'pending',
-  'all', 'detail', 'once', 'yes',
+  'all', 'detail', 'once', 'yes', 'classroom', 'include-homework',
 ]);
 
 // ---------------------------------------------------------------- argv ----
@@ -334,7 +336,7 @@ function loginWarnings(health, identity) {
   return warnings;
 }
 
-async function cmdLogin(flags) {
+async function cmdLogin(flags, { silent = false } = {}) {
   const base = flags.base || env('BASE') || DEFAULT_BASE;
   const verbose = (m) => flags.verbose && process.stderr.write(`[login] ${m}\n`);
 
@@ -357,6 +359,7 @@ async function cmdLogin(flags) {
     }
     const identity = await resolveIdentity(api);
     saveSessionOrThrow({ jar, username: identity.me?.username, baseUrl: base, meta: { method: 'cookie' } });
+    if (silent) return;
     const warnings = loginWarnings(health, identity);
     render(
       {
@@ -387,6 +390,7 @@ async function cmdLogin(flags) {
       if (health.ok) {
         const identity = await resolveIdentity(api);
         saveSessionOrThrow({ jar: existing.jar, username: identity.me?.username, baseUrl: base, meta: existing.meta });
+        if (silent) return;
         render(
           {
             authenticated: true,
@@ -431,6 +435,7 @@ async function cmdLogin(flags) {
   }
 
   const identity = await resolveIdentity(api);
+  if (silent) return;
   const warnings = loginWarnings(health, identity);
 
   render(
@@ -495,6 +500,94 @@ function getApi(flags) {
   };
 
   return new Api({ baseUrl, jar: session.jar, onAuthRequired, verbose: Boolean(flags.verbose) });
+}
+
+async function openClassroomSession(cookieFile) {
+  const courses = loadSession();
+  let jar;
+  let username;
+  if (cookieFile) {
+    jar = jarFromCookieString(fs.readFileSync(cookieFile, 'utf8'), 'classroom.zju.edu.cn');
+  } else {
+    if (!courses?.jar.cookies.size) {
+      throw new ApiError('本机没有可用于智云课堂的统一认证会话', {
+        code: 'AUTH_REQUIRED',
+        hint: '运行 xdc login --classroom，或使用 xdc classroom login --cookie-file <文件>',
+      });
+    }
+    jar = await connectClassroom(courses.jar);
+    username = courses.username;
+  }
+  const classroom = new ClassroomClient({ jar });
+  await classroom.checkSession();
+  const sessionFile = saveSessionOrThrow({
+    jar: CookieJar.fromJSON(jar.toJSON().filter(({ domain }) =>
+      domain === 'classroom.zju.edu.cn' || domain === 'zju.edu.cn')),
+    username,
+    service: 'classroom',
+    baseUrl: CLASSROOM_ORIGIN,
+    meta: { method: cookieFile ? 'cookie' : 'cas' },
+  });
+  return { classroom, sessionFile };
+}
+
+async function withClassroomSession(operation) {
+  const session = loadSession('classroom');
+  if (session) {
+    try {
+      return await operation(new ClassroomClient({ jar: session.jar }));
+    } catch (error) {
+      if (error.code !== 'AUTH_REQUIRED') throw error;
+    }
+  }
+  const { classroom } = await openClassroomSession();
+  return operation(classroom);
+}
+
+async function cmdClassroom(flags, positional) {
+  const [action, courseId, sessionId] = positional;
+  if (action === 'login') {
+    const { sessionFile } = await openClassroomSession(flags['cookie-file']);
+    render({ authenticated: true, session_file: sessionFile }, flags, { lines: ['✓ 智云课堂已登录'] });
+    return;
+  }
+  if (action === 'status') {
+    const session = loadSession('classroom');
+    if (session) await new ClassroomClient({ jar: session.jar }).checkSession();
+    render({ authenticated: Boolean(session) }, flags, {
+      lines: [session ? '✓ 智云课堂会话可用' : '智云课堂尚未登录'],
+    });
+    return;
+  }
+  if (action === 'sessions') {
+    const month = flags.month ?? new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit',
+    }).format(new Date());
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw usageError('--month 需要 YYYY-MM');
+    const list = await withClassroomSession((client) => client.sessions(month));
+    render(list, flags, { count: list.length, month, table: {
+      headers: ['日期', '课程 ID', '场次 ID', '课程', '场次'],
+      rows: list.map((row) => [row.date ?? '', row.course_id, row.session_id, row.course_name, row.session_name]),
+    } });
+    return;
+  }
+  if (action === 'slides' || action === 'export') {
+    if (![courseId, sessionId].every((id) => /^[1-9]\d{0,19}$/.test(id ?? ''))) {
+      throw usageError('需要有效的课程 ID 和场次 ID');
+    }
+    if (action === 'slides') {
+      const slides = await withClassroomSession((client) => client.slides(courseId, sessionId));
+      render(slides.map(({ page }) => ({ page })), flags, { count: slides.length, course_id: courseId, session_id: sessionId });
+      return;
+    }
+    if (typeof flags.output !== 'string' || path.extname(flags.output).toLowerCase() !== '.pdf') {
+      throw usageError('用法: xdc classroom export <courseId> <sessionId> --output <文件.pdf>');
+    }
+    const result = await withClassroomSession((client) => client.exportPdf(courseId, sessionId, flags.output));
+    render(result, flags, { lines: [`已导出 ${result.page_count} 页到 ${result.path}`] });
+    return;
+  }
+  throw usageError('用法: xdc classroom <login|status|sessions|slides|export>');
 }
 
 // ------------------------------------------------------------- commands ----
@@ -672,20 +765,15 @@ async function cmdAssignment(flags, positional) {
   }
 
   const detail = normAssignmentDetail(activity, course);
-  const downloaded = [];
   if (flags.download) {
-    const dir = path.resolve(String(flags.download));
-    for (const f of detail.attachments) {
-      if (!f.downloadable) continue;
-      try {
-        const url = await api.uploadUrl(f.id);
-        const r = await api.downloadFile(url, path.join(dir, safeFileName(f.name, `file-${f.id}`)));
-        downloaded.push({ name: f.name, path: r.path, size: r.size });
-      } catch (e) {
-        downloaded.push({ name: f.name, error: e.code ?? 'ERROR' });
-      }
-    }
-    detail.downloaded = downloaded;
+    const files = learningActivityAttachments({ id: activityId, ...activity }, courseId, 'homework');
+    const result = await downloadLearningAttachments(api, files, String(flags.download), { groupByActivity: false });
+    detail.downloaded = [
+      ...result.downloaded,
+      ...result.failed.map(({ name, reason }) => ({ name, error: reason })),
+    ];
+    detail.partial = result.partial;
+    if (result.failed.length) detail.failed = result.failed;
   }
 
   render(detail, flags, {
@@ -698,6 +786,7 @@ async function cmdAssignment(flags, positional) {
       detail.allow_retract !== null ? `可撤回/重交: ${detail.allow_retract ? '是' : '否'}` : '',
       '',
       detail.description ?? '（无文字要求）',
+      flags.download ? `已下载 ${detail.downloaded.length - (detail.failed?.length ?? 0)} 个文件，失败 ${detail.failed?.length ?? 0} 个` : null,
       detail.attachments.length ? '' : null,
     ].filter((v) => v !== null),
     table: detail.attachments.length
@@ -946,64 +1035,60 @@ async function cmdNotifications(flags) {
   });
 }
 
-function safeFileName(name, fallback = 'file') {
-  const cleaned = String(name ?? '')
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\.+/, '');
-  return (cleaned || fallback).slice(0, 120);
-}
-
 async function cmdMaterials(flags, positional) {
   const id = positional[0] || flags.course;
-  if (!id) throw usageError('用法: xdc materials <courseId> [--download <dir>]');
+  if (typeof id !== 'string' || !/^[1-9]\d*$/.test(id)) {
+    throw usageError('用法: xdc materials <courseId> [--include-homework] [--download <dir>]');
+  }
   const api = getApi(flags);
-  const list = (await api.courseMaterials(id)).map(normMaterial);
-
-  const downloaded = [];
-  const failed = [];
-  if (flags.download) {
-    const dir = path.resolve(String(flags.download));
-    for (const m of list) {
-      const sub = path.join(dir, safeFileName(m.title ?? `material-${m.id}`));
-      for (const f of m.files) {
-        if (!f.downloadable) {
-          failed.push({ id: f.id, name: f.name, reason: 'not_downloadable' });
-          continue;
-        }
-        try {
-          const url = await api.uploadUrl(f.id);
-          const dest = path.join(sub, safeFileName(f.name, `file-${f.id}`));
-          const r = await api.downloadFile(url, dest);
-          downloaded.push({ name: f.name, path: r.path, size: r.size });
-        } catch (e) {
-          failed.push({ id: f.id, name: f.name, reason: e.code ?? 'ERROR', message: e.message });
-        }
+  const { materials, attachments, partial, errors } = await listLearningAttachments(api, id, {
+    includeHomework: Boolean(flags['include-homework']),
+  });
+  const selected = new Set(asList(flags.file));
+  if ([...selected].some((uploadId) => !/^[1-9]\d*$/.test(uploadId))) {
+    throw usageError('--file 需要正整数附件 ID');
+  }
+  const files = selected.size ? attachments.filter((file) => selected.has(String(file.id))) : attachments;
+  if (selected.size) {
+    for (const uploadId of selected) {
+      if (!files.some((file) => String(file.id) === uploadId)) {
+        throw new ApiError(`当前附件列表中找不到 ID ${uploadId}`, {
+          code: partial ? 'INCOMPLETE_INVENTORY' : 'NOT_FOUND',
+        });
       }
     }
   }
-
+  const result = flags.download
+    ? await downloadLearningAttachments(api, files, String(flags.download))
+    : { downloaded: [], failed: [], partial: false };
+  const { downloaded, failed } = result;
   const data = {
     course_id: Number(id),
-    materials: list,
+    materials,
+    attachments: files,
     downloaded,
+    partial: partial || result.partial,
+    ...(errors.length ? { errors } : {}),
     ...(failed.length ? { failed } : {}),
   };
   render(data, flags, {
-    count: list.length,
-    table: {
+    count: materials.length,
+    table: flags['include-homework'] || selected.size ? {
+      headers: ['附件 ID', '来源', '文件', '大小'],
+      rows: files.map((file) => [file.id, file.kind === 'homework' ? '作业' : '课程', file.name ?? '', file.size ?? '']),
+    } : {
       headers: ['ID', '标题', '类型', '文件'],
-      rows: list.map((m) => [
+      rows: materials.map((m) => [
         m.id,
         clip(m.title ?? '', 40),
         m.type ?? '',
         m.files.map((f) => f.name).join(', ') || (m.link ? '外链' : '—'),
       ]),
     },
-    lines: flags.download
-      ? [`已下载 ${downloaded.length} 个文件到 ${path.resolve(String(flags.download))}`]
-      : undefined,
+    lines: [
+      ...(partial ? [`附件清单不完整，${errors.length} 项查询失败`] : []),
+      ...(flags.download ? [`已下载 ${downloaded.length} 个文件，失败 ${failed.length} 个`] : []),
+    ],
   });
 }
 
@@ -1464,6 +1549,7 @@ const HELP = `xdc — 学在浙大 (courses.zju.edu.cn) 命令行 / CLI for ZJU 
 
 登录:
   xdc login                        登录（交互输入学号/密码，或读 XD_USERNAME/XD_PASSWORD）
+  xdc login --classroom             登录学在浙大并建立智云课堂会话
   xdc login --cookie "<cookie>"    导入浏览器 Cookie（SSO 有二次验证/验证码时用这个）
   xdc logout                       清除本地会话
   xdc whoami                       显示当前身份
@@ -1486,7 +1572,13 @@ const HELP = `xdc — 学在浙大 (courses.zju.edu.cn) 命令行 / CLI for ZJU 
   xdc semesters                                学期列表
   xdc announcements --course <id> | --all      课程公告（--all 聚合全部课程）
   xdc notifications [--limit N]                通知
-  xdc materials <courseId> [--download <dir>]  课件/资料（可选下载）
+  xdc materials <courseId> [--include-homework] [--file <id>] [--download <dir>]
+                                               课程资料及可选的作业附件
+  xdc classroom login [--cookie-file <文件>]   建立智云课堂会话
+  xdc classroom status                        检查智云课堂会话
+  xdc classroom sessions [--month YYYY-MM]     本人课堂场次
+  xdc classroom slides <courseId> <sessionId>  场次幻灯片页码
+  xdc classroom export <courseId> <sessionId> --output <文件.pdf>
   xdc rollcall --course <id> | --all           点名记录 + 本人在场状态（只读）
   xdc grades <courseId>                        成绩
 
@@ -1543,12 +1635,18 @@ export async function main(argv = process.argv.slice(2)) {
 
     switch (command) {
       case 'login':
-        await cmdLogin(flags);
+        if (flags.classroom) {
+          await cmdLogin(flags, { silent: true });
+          await cmdClassroom(flags, ['login']);
+        } else {
+          await cmdLogin(flags);
+        }
         break;
       case 'logout': {
         const removed = clearSession();
-        render({ logged_out: removed, session_file: sessionPath() }, flags, {
-          lines: [removed ? '✓ 已清除本地会话' : '本地没有会话'],
+        const classroomRemoved = clearSession('classroom');
+        render({ logged_out: removed || classroomRemoved, session_file: sessionPath() }, flags, {
+          lines: [removed || classroomRemoved ? '✓ 已清除本地会话' : '本地没有会话'],
         });
         break;
       }
@@ -1589,6 +1687,9 @@ export async function main(argv = process.argv.slice(2)) {
       case 'materials':
         await cmdMaterials(flags, positional);
         break;
+      case 'classroom':
+        await cmdClassroom(flags, positional);
+        break;
       case 'rollcall':
       case 'rollcalls':
       case 'attendance':
@@ -1628,13 +1729,15 @@ function reportError(err, flags) {
   if (err instanceof AuthError) {
     exitCode = EXIT.AUTH;
   } else if (err instanceof ApiError) {
-    if (err.code === 'AUTH_REQUIRED') exitCode = EXIT.AUTH;
+    if (err.code === 'USAGE') exitCode = EXIT.USAGE;
+    else if (err.code === 'AUTH_REQUIRED') exitCode = EXIT.AUTH;
     else if (err.code === 'NOT_FOUND') exitCode = EXIT.NOT_FOUND;
     else if (err.code === 'NETWORK') exitCode = EXIT.NETWORK;
   }
 
   const error = { code, message: err.message };
   if (err.hint) error.hint = err.hint;
+  if (err.missing_pages) error.missing_pages = err.missing_pages;
   if (flags?.verbose && err.body) error.body = String(err.body).slice(0, 800);
 
   if (useJson(flags ?? {})) {

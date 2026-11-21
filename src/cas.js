@@ -13,9 +13,18 @@
 // Verified byte-for-byte against that script on 2026-10.
 
 import { request, text } from './http.js';
+import { redactUrl } from './debug.js';
 
 export const CAS_BASE = 'https://zjuam.zju.edu.cn/cas';
 export const ENTRY = 'https://courses.zju.edu.cn/user/index';
+const CAS_ORIGIN = new URL(CAS_BASE).origin;
+const CAS_LOGIN_ORIGINS = new Set([CAS_ORIGIN, 'https://courses.zju.edu.cn', 'https://identity.zju.edu.cn']);
+
+function validateCasUrl(url) {
+  if (url.username || url.password || !CAS_LOGIN_ORIGINS.has(url.origin)) {
+    throw new AuthError('统一认证跳转到了未识别的地址', { code: 'CAS_REDIRECT' });
+  }
+}
 
 export class AuthError extends Error {
   constructor(message, { code = 'AUTH_ERR', hint, detail } = {}) {
@@ -77,6 +86,8 @@ export function encryptPassword(password, modulusHex, exponentHex) {
 export async function getPubKey(jar) {
   const { res, url } = await request(`${CAS_BASE}/v2/getPubKey`, {
     jar,
+    trace: false,
+    validateUrl: validateCasUrl,
     headers: { accept: 'application/json, text/javascript, */*; q=0.01', 'x-requested-with': 'XMLHttpRequest' },
   });
   if (!res.ok) throw new AuthError(`获取 CAS 公钥失败 (HTTP ${res.status})`, { code: 'PUBKEY' });
@@ -120,6 +131,8 @@ async function captchaRequired(jar) {
   // whether it should be shown.
   const { res } = await request(`${CAS_BASE}/v2/getKaptchaStatus`, {
     jar,
+    trace: false,
+    validateUrl: validateCasUrl,
     headers: { accept: 'application/json, text/javascript, */*; q=0.01', 'x-requested-with': 'XMLHttpRequest' },
   });
   if (!res.ok) return false;
@@ -133,7 +146,7 @@ async function captchaRequired(jar) {
  */
 export async function passwordLogin({ username, password, jar, log = () => {} }) {
   log('→ 请求入口页，跟随 SSO 跳转…');
-  let { res, url, history } = await request(ENTRY, { jar });
+  let { res, url, history } = await request(ENTRY, { jar, trace: false, validateUrl: validateCasUrl });
   let html = await text(res);
 
   // Some accounts may already have a live session.
@@ -142,7 +155,7 @@ export async function passwordLogin({ username, password, jar, log = () => {} })
   }
 
   if (!url.startsWith('https://zjuam.zju.edu.cn/cas/login')) {
-    throw new AuthError(`未到达 CAS 登录页，停在 ${url}`, {
+    throw new AuthError(`未到达 CAS 登录页，停在 ${redactUrl(url)}`, {
       code: 'NO_CAS',
       hint: '可能需要人工登录/二次验证，请改用 --cookie 方式导入浏览器会话',
       detail: html.slice(0, 300),
@@ -173,11 +186,17 @@ export async function passwordLogin({ username, password, jar, log = () => {} })
   form.set('password', encryptPassword(password, modulus, exponent));
   form.set('_eventId', 'submit');
 
-  const postUrl = new URL(action, url).toString();
+  const postUrl = new URL(action, url);
+  if (postUrl.origin !== CAS_ORIGIN || postUrl.username || postUrl.password) {
+    throw new AuthError('CAS 登录表单地址异常', { code: 'CAS_FORM' });
+  }
   log('→ 提交登录表单…');
   ({ res, url, history } = await request(postUrl, {
     method: 'POST',
     jar,
+    trace: false,
+    validateUrl: validateCasUrl,
+    allowCrossOriginBody: false,
     body: form.toString(),
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
@@ -214,7 +233,7 @@ export async function passwordLogin({ username, password, jar, log = () => {} })
       detail: url,
     });
   }
-  throw new AuthError(`登录未完成，停止在 ${url} (HTTP ${res.status})`, {
+  throw new AuthError(`登录未完成，停止在 ${redactUrl(url)} (HTTP ${res.status})`, {
     code: 'INCOMPLETE',
     detail: html.slice(0, 300),
   });

@@ -1,17 +1,20 @@
 # xdc-cli · 学在浙大
 
-浙江大学课程平台 [`courses.zju.edu.cn`](https://courses.zju.edu.cn)（学在浙大 / TronClass）的 CLI。
+浙江大学学在浙大和智云课堂的 CLI，支持课件查询和导出。
 
 - 命令：**`xdc`**（别名 `xzzd`）
 - 认证：浙大统一身份认证（CAS + Keycloak）
-- 依赖：Node ≥ 20，无第三方包
+- 依赖：Node ≥ 20.3，智云课件通过 `pdf-lib` 合成 PDF
 
 本项目从 D32gang 的 [zju-cli/xzzd-cli](https://github.com/d32gang-steel/zju-cli/tree/d6d143fb22b1000472d1743f72620cb091e2a99d/xzzd-cli) 导入并独立维护。上游子项目在 `package.json` 中标注 MIT。接口记录见 [api.md](api.md)，Agent 用法见 [SKILL.md](SKILL.md)。
+
+智云接入和 WPS 导出参考了 PeiPei233 的 [zju-learning-assistant](https://github.com/PeiPei233/zju-learning-assistant/tree/a759541)。WPS 适配器保留了原作者的 MIT 声明。
 
 ## 安装
 
 ```bash
 cd xdc-cli
+npm ci
 npm link          # 或 node bin/xdc.js <命令>
 ```
 
@@ -29,6 +32,8 @@ xdc login
 ```bash
 xdc login --cookie "session=...; route=..."
 ```
+
+`xdc login --classroom` 完成学在浙大登录后，用同一统一认证会话建立智云会话。`xdc classroom login` 可使用已有统一认证会话。如果需要在智云官网完成交互验证，可以将该站点的 Cookie 请求头写入本机临时文件，再通过 `xdc classroom login --cookie-file <文件>` 导入。`xdc logout` 清除两边的本地会话。
 
 ## 命令
 
@@ -49,7 +54,11 @@ xdc semesters                  # 学期 + 每学期门数
 xdc grades <cid>
 xdc announcements --all
 xdc notifications
-xdc materials <cid> [--download <dir>]
+xdc materials <cid> [--include-homework] [--file <id>] [--download <dir>]
+xdc classroom status
+xdc classroom sessions [--month YYYY-MM]
+xdc classroom slides <cid> <sessionId>
+xdc classroom export <cid> <sessionId> --output <文件.pdf>
 xdc rollcall --course <cid>    # 点名场次 + 本人状态
 xdc watch [--interval 60]      # 盯点名，出现即响铃
 
@@ -91,6 +100,10 @@ $ xdc courses --current
 `--json` 强制 JSON，`--compact` 单行，`--fields a,b` 裁剪字段。`--debug` 会遮盖常见的 Cookie、认证头和 URL 票据字段，响应正文仍可能包含个人信息。
 
 `ddl --days 7` 只包含未来 7 天内到期的作业，省略 `--days` 时也会显示已逾期和无截止日期的记录。JSON 中 `submitted: null` 表示提交状态未知。`partial: true` 表示有课程查询失败，详情在 `errors` 中，`data` 仍含可用的结果。
+
+`materials --include-homework` 会把作业附件纳入清单。`--file` 可重复指定附件 ID。下载结果中的 `format` 为 `original` 或 `preview_pdf`，预览版文件以 `.preview.pdf` 结尾。WPS 预览导出要求平台明确授权，缺少授权信息时返回 `WPS_PERMISSION_UNKNOWN`。批量结果通过 `data.partial`、`data.errors` 和 `data.failed` 报告未完成项。
+
+智云导出将一节课堂的 JPG 或 PNG 幻灯片按顺序合成 PDF。缺页会返回 `CLASSROOM_PARTIAL_EXPORT` 和 `missing_pages`。这些新接口已经过模拟测试，仍需用真实课堂和 WPS 附件验证。
 
 ## 限制
 

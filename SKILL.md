@@ -1,6 +1,6 @@
 ---
 name: xdc-courses
-description: 查询浙江大学「学在浙大」(courses.zju.edu.cn) 的课程、作业、待办、成绩、公告，并可直接调用其内部 API。当用户要查看/检索浙大课程作业、截止时间、课程列表，或需要登录学在浙大抓数据时使用。
+description: 查询学在浙大的课程、作业、待办、成绩和公告，下载课程与作业附件，或按场次导出智云课堂课件 PDF。
 ---
 
 # xdc — 学在浙大 CLI
@@ -11,11 +11,9 @@ description: 查询浙江大学「学在浙大」(courses.zju.edu.cn) 的课程�
 
 ## 前置：登录
 
-CLI 的会话存在 `~/.config/xdc-cli/session.json`，约 1 小时过期。优先让环境变量里带凭据，CLI 会自动续登：
+CLI 复用本机保存的会话。需要账号交互时，在终端运行 `xdc login`，由用户直接输入凭据。查询先检查会话：
 
 ```bash
-export XD_USERNAME=3200100000
-export XD_PASSWORD='...'
 xdc status --json        # 平台是否可用（平台经常崩，先看这个）
 xdc doctor --json        # 会话/身份/端点自检
 ```
@@ -29,7 +27,7 @@ xdc login --json         # 交互输入（密码不回显）
 SSO 触发验证码/二次验证时，密码流程会失败（`CAPTCHA` / `MFA_REQUIRED`），改用浏览器 Cookie：
 
 ```bash
-xdc login --cookie "session=...; route=...; ..."   # 从 DevTools Network 的 Cookie 请求头复制
+xdc login --cookie-file ./courses-cookie.txt
 ```
 
 ## 查询（全部支持 --json）
@@ -55,7 +53,12 @@ xdc announcements --course 678 --json     # 单课程公告
 xdc announcements --all --json            # 全部课程公告聚合
 xdc notifications --json --limit 10       # 通知
 xdc materials 678 --json                  # 课件/资料列表
-xdc materials 678 --download ./course678   # 下载课件（走签名链接）
+xdc materials 678 --include-homework --json
+xdc materials 678 --include-homework --file 21 --download ./course678 --json
+xdc classroom status --json
+xdc classroom sessions --month 2026-11 --json
+xdc classroom slides 678 12345 --json
+xdc classroom export 678 12345 --output ./lecture.pdf --json
 xdc rollcall --course 678 --json          # 点名场次 + 本人状态（on_call_fine / absent）
 xdc rollcall --all --json --limit 20      # 跨课程汇总（可加 --detail 逐场查本人状态）
 ```
@@ -73,6 +76,8 @@ xdc rollcall --all --json --limit 20      # 跨课程汇总（可加 --detail �
 
 退出码：`0` 成功 · `2` 未登录 · `3` 不存在 · `4` 网络 · `5` 用法错误。
 解析时始终检查 `ok`，不要只看退出码为 0 就假设字段齐全。
+
+学在浙大附件在 `data.attachments` 中，用 `id` 选择文件。下载结果用 `data.downloaded[].format` 区分原文件和 WPS 预览 PDF，检查 `data.partial`、`data.errors` 和 `data.failed`。智云从 `sessions` 返回的 `course_id` 和 `session_id` 选择课堂。智云会话失效时，由用户在终端运行 `xdc login --force --classroom`。遇到缺页时保留错误中的 `missing_pages`。
 
 课程对象关键字段：`id`、`name`、`code`、`semester`、`semester_key`（`2026-2027-1`，可排序）、`academic_year`、`term`、`instructor`、`department`。
 

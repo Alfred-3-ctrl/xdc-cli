@@ -1,19 +1,22 @@
 {
   "name": "xdc-cli",
   "version": "0.2.0",
-  "description": "AI-friendly CLI for ZJU 学在浙大 (courses.zju.edu.cn) — login, courses, assignments, raw API access",
+  "description": "ZJU CLI for 学在浙大 and 智云课堂 — courses, assignments and material downloads",
   "type": "module",
   "bin": {
     "xdc": "bin/xdc.js",
     "xzzd": "bin/xdc.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.3"
   },
   "scripts": {
     "start": "node bin/xdc.js",
     "test": "node --test"
   },
   "license": "MIT",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "pdf-lib": "1.17.1"
+  }
 }
