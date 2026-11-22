@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>学习桌面</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <div id="xdc-glass">
+    <div class="xdc-window" data-window aria-label="学习桌面">
+      <header class="window-head">
+        <button class="tool back" type="button" data-action="back" aria-label="返回" title="返回" hidden><span aria-hidden="true">‹</span></button>
+        <div class="window-tools">
+          <button class="tool" type="button" data-action="refresh" aria-label="刷新" title="刷新"><span aria-hidden="true">↻</span></button>
+          <button class="tool" type="button" data-action="settings" aria-label="设置" title="设置"><span aria-hidden="true">⚙</span></button>
+        </div>
+      </header>
+      <main class="window-content" data-content aria-live="polite"></main>
+      <nav class="dock" aria-label="主导航">
+        <button type="button" data-nav="overview" aria-label="总览" aria-current="page"><span class="nav-fallback" aria-hidden="true">⌂</span><span class="nav-label">总览</span></button>
+        <button type="button" data-nav="courses" aria-label="我的课程"><span class="nav-fallback" aria-hidden="true">▥</span><span class="nav-label">我的课程</span></button>
+        <button type="button" data-nav="downloads" aria-label="下载记录"><span class="nav-fallback" aria-hidden="true">↓</span><span class="nav-label">下载记录</span></button>
+      </nav>
+      <div class="notice" data-notice role="status" hidden></div>
+    </div>
+  </div>
+</body>
+</html>

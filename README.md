@@ -2,6 +2,20 @@
 
 浙江大学学在浙大和智云课堂的 CLI，支持课件查询和导出。
 
+## Windows 学习桌面
+
+在仓库根目录安装依赖并启动组件。安装桌面依赖需要 Node.js 22.12 或更高版本。
+
+```powershell
+npm ci
+npm --prefix desktop ci
+npm --prefix desktop start
+```
+
+组件支持总览、课程详情和下载队列。它复用 CLI 的本地会话，首次登录可以选择让 Windows 加密保存统一认证凭据。设置页提供外观、窗口位置和尺寸、布局快捷键、下载目录及登录 Windows 时启动。首次运行会添加「学习桌面」开始菜单入口。
+
+Windows 下由本机辅助进程检测 `uu.exe`。运行 UU 时组件收起，正在处理的文件完成后退出。UU 退出后组件恢复，排队任务继续。辅助进程首次运行时使用 Windows 自带的 .NET Framework 编译器构建。
+
 - 命令：**`xdc`**（别名 `xzzd`）
 - 认证：浙大统一身份认证（CAS + Keycloak）
 - 依赖：Node ≥ 20.3，智云课件通过 `pdf-lib` 合成 PDF

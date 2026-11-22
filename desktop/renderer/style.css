@@ -1,0 +1,186 @@
+#xdc-glass {
+    color-scheme: light dark;
+    --ink: light-dark(#232426, #f2f2f4);
+    --muted-ink: color-mix(in srgb,light-dark(#65676c,#aaaab1),
+      light-dark(#393c43,#c7cfdd) var(--text-contrast-boost,0%));
+    --sheet: light-dark(#f7f7f8, #202124);
+    --dialog: light-dark(#fdfdfe, #27282b);
+    --rule: light-dark(#22263821, #ffffff24);
+    --hover: light-dark(#2026380a, #ffffff0b);
+    --window-film: color-mix(in srgb,var(--sheet) var(--window-opacity,76%),transparent);
+    --window-edge: light-dark(#ffffffca, #edf4ff4c);
+    --glass-tone: light-dark(#ffffff, #484951);
+    --glass: color-mix(in srgb,var(--glass-tone) var(--glass-opacity,84%),transparent);
+    --glass-edge: light-dark(#ffffffef, #ffffff36);
+    --lift: light-dark(#21273723, #03050763);
+    --selected: light-dark(#262a3310, #ffffff20);
+    --blue: light-dark(#245dd1, #aac4fd);
+    color: var(--ink);
+    font: var(--text-size,14px)/1.45 "Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+    width: 100%;
+  }
+  #xdc-glass * { box-sizing: border-box; }
+  #xdc-glass [hidden] { display: none !important; }
+  #xdc-glass button, #xdc-glass input, #xdc-glass select, #xdc-glass textarea { font: inherit; color: inherit; }
+  #xdc-glass :is(button,input,select,textarea,summary):focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+  #xdc-glass[data-scheme=light] { color-scheme: light; }
+  #xdc-glass[data-scheme=dark] { color-scheme: dark; }
+
+  #xdc-glass .xdc-window {
+    position: relative;
+    display: grid;
+    grid-template-rows: minmax(0,1fr);
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--window-edge);
+    border-radius: var(--window-radius,25px);
+    background: var(--window-film);
+    backdrop-filter: blur(24px) saturate(1.12);
+    box-shadow: 0 19px 46px -21px var(--lift), 0 0 0 1px var(--rule), inset 0 1px 0 var(--window-edge);
+    overflow: hidden;
+
+    container-type: inline-size;
+  }
+  #xdc-glass .window-head {
+    position: absolute; z-index: 2; inset: 0 0 auto; height: 57px;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 11px 15px; pointer-events: none;
+  }
+  #xdc-glass .unlocked .window-head { pointer-events: auto; cursor: grab; touch-action: none; }
+  #xdc-glass .tool {
+    pointer-events: auto; display: grid; place-items: center; min-width: 36px; height: 36px;
+    padding: 0; border: 1px solid var(--glass-edge); border-radius: 50%;
+    background: var(--glass); backdrop-filter: blur(16px) saturate(1.1); color: var(--ink);
+    box-shadow: 0 3px 7px -4px var(--lift), inset 0 1px 0 var(--glass-edge);
+  }
+  #xdc-glass .tool:hover { background: color-mix(in srgb,var(--glass-tone) 95%,transparent); }
+  #xdc-glass .icon-button:hover, #xdc-glass .press:hover { background: var(--hover); color: var(--ink); }
+  #xdc-glass .tool.back { font: 29px/1 "Segoe UI",sans-serif; }
+  #xdc-glass .tool.back span { transform: translateY(-2px); }
+  #xdc-glass .window-content {
+    overflow-y: auto; overscroll-behavior: contain; min-width: 0; min-height: 0;
+    scrollbar-width: thin;
+    padding: 58px clamp(20px,6cqi,29px) 102px;
+  }
+  #xdc-glass .xdc-window.scrolled::before {
+    content: ""; position: absolute; z-index: 1; inset: 0 0 auto; height: 61px; pointer-events: none;
+    background: linear-gradient(var(--window-film) 54%,transparent);
+  }
+  #xdc-glass h2, #xdc-glass h3, #xdc-glass p { margin: 0; }
+  #xdc-glass .hero { margin-bottom: 29px; }
+  #xdc-glass .hero h2 { font-size: 2.14em; line-height: 1.22; font-weight: 630; letter-spacing: -.04em; overflow-wrap: anywhere; }
+  #xdc-glass .eyebrow { margin-top: 5px; color: var(--muted-ink); font-size: .93em; }
+  #xdc-glass .section { margin: 0 0 27px; min-width: 0; }
+  #xdc-glass .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 0 8px; }
+  #xdc-glass .section-head h3 { font-size: .93em; font-weight: 600; }
+  #xdc-glass .subline { color: var(--muted-ink); font-size: max(11px,.86em); overflow-wrap: anywhere; }
+  #xdc-glass .section-head .subline { text-align: right; }
+  #xdc-glass .list { border-top: 1px solid var(--rule); }
+  #xdc-glass .list + .section { margin-top: 23px; }
+  #xdc-glass .row, #xdc-glass .file, #xdc-glass .setting-row {
+    display: flex; align-items: center; gap: 9px; min-height: var(--row-height,54px); padding: var(--row-pad,9px) 0;
+    width: 100%; border: 0; border-bottom: 1px solid var(--rule);
+    background: transparent; text-align: left;
+  }
+  #xdc-glass .row:hover { background: var(--hover); }
+  #xdc-glass .row .lead, #xdc-glass .file .lead { flex: 1; min-width: 0; }
+  #xdc-glass .lead strong { display: block; font-weight: 600; overflow-wrap: anywhere; }
+  #xdc-glass .trail { flex: none; color: var(--muted-ink); max-width: 40%; text-align: right; font-size: max(11px,.86em); }
+  #xdc-glass .trail time { font-variant-numeric: tabular-nums; }
+  #xdc-glass .dock {
+    position: absolute; z-index: 2; inset: auto 0 13px; margin-inline: auto;
+    width: max-content; max-width: calc(100% - 24px);
+    display: flex; justify-content: center; gap: 2px; padding: 4px;
+    border: 1px solid var(--glass-edge); border-radius: min(24px,var(--window-radius,25px));
+    background: var(--glass); backdrop-filter: blur(var(--glass-blur,22px)) saturate(1.15);
+    box-shadow: 0 7px 23px -10px var(--lift), 0 0 0 1px var(--rule), inset 0 1px 0 var(--glass-edge);
+  }
+  #xdc-glass .xdc-window::after {
+    content: ""; position: absolute; z-index: 1; inset: auto 0 0; height: 80px; pointer-events: none;
+    background: linear-gradient(transparent,var(--window-film) 90%);
+  }
+  #xdc-glass .dock button {
+    display: flex; align-items: center; justify-content: center; gap: 6px; border: 0;
+    min-height: 38px; padding: 4px 13px; white-space: nowrap;
+    border-radius: min(19px,calc(var(--window-radius,25px) - 5px)); background: transparent; font-size: .93em; color: var(--muted-ink);
+  }
+  #xdc-glass .dock button[aria-current=page] { background: var(--selected); color: var(--ink); font-weight: 600; }
+  #xdc-glass .dock button:hover { background: var(--hover); }
+  #xdc-glass .dock button[aria-current=page]:hover { background: var(--selected); }
+  #xdc-glass[data-nav-style=text] .dock .nav-fallback,
+  #xdc-glass[data-nav-style=icons] .dock .nav-label { display: none; }
+  #xdc-glass[data-nav-align=left] .dock { margin-inline: 13px auto; }
+  #xdc-glass[data-nav-align=right] .dock { margin-inline: auto 13px; }
+  #xdc-glass .tabs { display: flex; margin: -9px 0 23px; gap: 15px; border-bottom: 1px solid var(--rule); }
+  #xdc-glass .tabs + .list { border-top: 0; }
+  #xdc-glass .tabs button { position: relative; color: var(--muted-ink); padding: 6px 2px 8px; border: 0; background: transparent; }
+  #xdc-glass .tabs button[aria-pressed=true] { color: var(--ink); font-weight: 650; }
+  #xdc-glass .tabs button[aria-pressed=true]::after { content: ""; position: absolute; height: 2px; background: currentColor; border-radius: 2px; inset: auto 2px -1px; }
+  #xdc-glass .press, #xdc-glass .icon-button { border: 0; background: transparent; border-radius: 8px; padding: 5px 8px; }
+  #xdc-glass .press.primary { color: var(--blue); font-weight: 600; }
+  #xdc-glass .icon-button { display: grid; place-items: center; width: 31px; height: 34px; padding: 0; font-weight: 650; color: var(--muted-ink); }
+  #xdc-glass .file .family { display: flex; align-items: center; gap: 0; flex: none; }
+  #xdc-glass .setting-row { justify-content: space-between; flex-wrap: wrap; }
+  #xdc-glass .setting-row :is(input:not([type=checkbox],[type=range]),select) {
+    border: 1px solid var(--rule); background: var(--dialog); padding: 5px 7px; border-radius: 6px;
+  }
+  #xdc-glass .setting-row input[type=number] { width: 76px; }
+  #xdc-glass .setting-row input[type=text] { width: 133px; }
+  #xdc-glass .setting-row input.compact-input { width: 88px; font-variant-numeric: tabular-nums; }
+  #xdc-glass .setting-row input[type=color] { width: 35px; min-height: 30px; padding: 2px; }
+  #xdc-glass .setting-row input[type=range] { accent-color: var(--blue); width: clamp(65px,27cqi,122px); margin: 0; }
+  #xdc-glass .setting-control { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  #xdc-glass .setting-control [data-value] { min-width: 4ch; text-align: right; color: var(--muted-ink); font-size: .85em; font-variant-numeric: tabular-nums; }
+  #xdc-glass .pref-footer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 20px; padding-bottom: 12px; }
+  #xdc-glass .pref-footer [data-changes] { margin-left: auto; }
+  #xdc-glass .pref-footer button:disabled { color: var(--muted-ink); opacity: .62; }
+  #xdc-glass input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; margin: 0; }
+\
+  #xdc-glass .notice {
+    position: absolute; z-index: 3; padding: 10px 13px; border-radius: 12px; border: 1px solid var(--rule);
+    background: var(--dialog); color: var(--ink); box-shadow: 0 6px 18px -10px var(--lift);
+  }
+  #xdc-glass .notice { bottom: 10px; right: 10px; max-width: min(calc(100% - 20px),345px); }
+
+  #xdc-glass .description { padding-top: 10px; color: var(--muted-ink); }
+  @container (max-width: 340px) {
+    #xdc-glass .dock button { padding-inline: 8px; gap: 4px; }
+    #xdc-glass .file { gap: 3px; }
+    #xdc-glass .file .family .press { padding-inline: 5px; }
+  }
+  @media (pointer: coarse) {
+    #xdc-glass .tool, #xdc-glass .press, #xdc-glass .icon-button, #xdc-glass .dock button { min-height: 44px; min-width: 44px; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    #xdc-glass { --window-film: var(--sheet); }
+    #xdc-glass .xdc-window { backdrop-filter: none; }
+    #xdc-glass :is(.dock,.tool) { background: var(--dialog); backdrop-filter: none; }
+  }
+html, body, #xdc-glass { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+#xdc-glass .window-tools { display: flex; gap: 8px; margin-left: auto; }
+#xdc-glass .window-head { -webkit-app-region: no-drag; }
+#xdc-glass .unlocked .window-head { -webkit-app-region: drag; }
+#xdc-glass .window-tools, #xdc-glass .tool { -webkit-app-region: no-drag; }
+#xdc-glass .tool span { line-height: 1; }
+#xdc-glass .tool:disabled, #xdc-glass .press:disabled { opacity: .6; cursor: wait; }
+#xdc-glass .panel-note { margin: 0 0 16px; overflow-wrap: anywhere; }
+#xdc-glass .panel-note .press { margin-left: -8px; }
+#xdc-glass .file .subline { display: block; }
+#xdc-glass .error { color: light-dark(#8a3a31,#f8aea6); }
+#xdc-glass .form { display: grid; gap: 11px; }
+#xdc-glass .form label { display: grid; gap: 4px; }
+#xdc-glass .form input:not([type=checkbox]), #xdc-glass .form textarea {
+  width: 100%; border: 1px solid var(--rule); border-radius: 7px; background: var(--dialog);
+  padding: 8px; min-width: 0;
+}
+#xdc-glass .form textarea { resize: vertical; max-height: 100px; }
+#xdc-glass .form .inline-check { display: flex; align-items: center; gap: 7px; }
+#xdc-glass .actions { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+#xdc-glass .actions .press:first-child { margin-left: -8px; }
+#xdc-glass .setting-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#xdc-glass .description { white-space: pre-wrap; overflow-wrap: anywhere; }
+#xdc-glass .notice { bottom: 73px; }
+#xdc-glass .file .family { gap: 2px; }
+#xdc-glass .tabs { flex-wrap: wrap; row-gap: 2px; }
+#xdc-glass input[type=month] { max-width: 100%; }
+#xdc-glass button[aria-busy=true] { opacity: .65; }

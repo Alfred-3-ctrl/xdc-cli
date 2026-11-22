@@ -1,0 +1,14 @@
+{
+  "name": "xdc-desktop",
+  "productName": "学习桌面",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "45.4.1"
+  }
+}
