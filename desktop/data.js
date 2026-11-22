@@ -15,6 +15,7 @@ const MAX_QUEUE = 200;
 export const DATA_METHODS = Object.freeze([
   'overview.load',
   'courses.list',
+  'courses.visibility',
   'course.detail',
   'assignment.detail',
   'classroom.list',
@@ -79,7 +80,7 @@ function readState(file) {
 }
 
 function freshAccount() {
-  return { links: {}, knownMaterials: {}, recentMaterials: [] };
+  return { links: {}, knownMaterials: {}, recentMaterials: [], hiddenCourseIds: [] };
 }
 
 function comparable(value) {
@@ -240,6 +241,44 @@ export class DesktopData {
     });
   }
 
+  async #listCourses({ refresh, includeHidden }) {
+    const owner = this.#sessionKey();
+    const courses = await this.#courses(refresh === true);
+    this.#checkOwner('courses', owner);
+    const hidden = new Set(this.#courseState()?.hiddenCourseIds ?? []);
+    return {
+      courses: includeHidden === true ? courses : courses.filter((course) => !hidden.has(String(course.id))),
+      hiddenIds: courses.map((course) => String(course.id)).filter((id) => hidden.has(id)),
+    };
+  }
+
+  async #setCourseVisibility({ hiddenIds }) {
+    if (!Array.isArray(hiddenIds)) throw badInput('隐藏课程列表格式无效');
+    const requested = new Set(hiddenIds.map((id) => requireId(id, '课程 ID')));
+    const owner = this.#sessionKey();
+    const courses = await this.#courses();
+    this.#checkOwner('courses', owner);
+    const account = this.#courseState(true);
+    if (!account) throw new ApiError('请先登录学在浙大', { code: 'AUTH_REQUIRED' });
+    const knownIds = courses.map((course) => String(course.id));
+    const known = new Set(knownIds);
+    const previous = account.hiddenCourseIds ?? [];
+    const hiddenOutsideTerm = previous.filter((id) => !known.has(id));
+    const staleIds = new Set(hiddenOutsideTerm);
+    if ([...requested].some((id) => !known.has(id) && !staleIds.has(id))) {
+      throw notFound('课程已不在当前列表中，请刷新后重新编辑');
+    }
+    const hidden = knownIds.filter((id) => requested.has(id));
+    account.hiddenCourseIds = [...hiddenOutsideTerm, ...hidden];
+    try {
+      if (this.#auth.scope?.('courses')) this.#persist();
+    } catch (error) {
+      account.hiddenCourseIds = previous;
+      throw error;
+    }
+    return { hiddenIds: hidden };
+  }
+
   async #courseContext(rawId) {
     const id = requireId(rawId, '课程 ID');
     const courses = await this.#courses();
@@ -261,13 +300,13 @@ export class DesktopData {
       this.#auth.withClassroom((client) => client.sessions(month)));
   }
 
-  #materialState(create = false) {
+  #courseState(create = false) {
     const owner = this.#auth.scope?.('courses');
     return this.#account(owner ?? this.#sessionKey(), Boolean(owner), create);
   }
 
   #observeMaterials(course, attachments) {
-    const account = this.#materialState(true);
+    const account = this.#courseState(true);
     if (!account) return;
     const ids = attachments.map(({ id, activity_id }) => id && `${activity_id}/${id}`);
     const previous = account.knownMaterials[course.id];
@@ -355,7 +394,7 @@ export class DesktopData {
     this.#checkOwner('courses', courseOwner);
     this.#checkOwner('classroom', classroomOwner);
     const currentCourses = new Set((coursesResult.value ?? []).map((course) => String(course.id)));
-    const newMaterials = (this.#materialState()?.recentMaterials ?? [])
+    const newMaterials = (this.#courseState()?.recentMaterials ?? [])
       .filter((file) => currentCourses.has(String(file.course_id)) && Date.parse(file.discoveredAt) >= now - 7 * DAY);
     return { deadlines, upcoming, recent, newMaterials, errors, refreshedAt: new Date(now).toISOString() };
   }
@@ -625,7 +664,8 @@ export class DesktopData {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw badInput('请求参数无效');
     switch (method) {
       case 'overview.load': return this.#overview(payload.refresh === true);
-      case 'courses.list': return { courses: await this.#courses(payload.refresh === true) };
+      case 'courses.list': return this.#listCourses(payload);
+      case 'courses.visibility': return this.#setCourseVisibility(payload);
       case 'course.detail': return this.#courseDetail(payload);
       case 'assignment.detail': return this.#assignmentDetail(payload);
       case 'classroom.list': {

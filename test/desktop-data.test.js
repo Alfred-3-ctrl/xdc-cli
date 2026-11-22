@@ -65,6 +65,50 @@ test('dashboard combines upcoming deadlines and nearby classes with newly observ
   assert.deepEqual((await reopened.handle('overview.load')).newMaterials, []);
 });
 
+test('course visibility persists per account and applies only to the course list', async (t) => {
+  const dir = await workingDirectory(t);
+  let owner = 'account1';
+  const another = { ...course, id: 15, name: '基础统计' };
+  let courses = [course, another];
+  const auth = {
+    scope: () => owner,
+    getApi: async () => ({
+      myCourses: async () => courses,
+      homeworkActivities: async () => [],
+      courseDetail: async () => course,
+      courseMaterials: async () => [],
+    }),
+    withClassroom: (run) => run({ sessions: async () => [] }),
+  };
+  const options = {
+    auth, statePath: path.join(dir, 'course-state.json'), now: () => NOW, defaultDownloadDir: dir,
+  };
+  const data = createDesktopData(options);
+  assert.deepEqual(await data.handle('courses.visibility', { hiddenIds: [14, '14'] }), { hiddenIds: ['14'] });
+  await assert.rejects(data.handle('courses.visibility', { hiddenIds: ['99'] }), { code: 'NOT_FOUND' });
+
+  const reopened = createDesktopData(options);
+  assert.deepEqual(await reopened.handle('courses.list'), { courses: [another], hiddenIds: ['14'] });
+  const editing = await reopened.handle('courses.list', { includeHidden: true });
+  assert.deepEqual(new Set(editing.courses.map(({ id }) => id)), new Set([14, 15]));
+  assert.deepEqual(editing.hiddenIds, ['14']);
+  assert.equal((await reopened.handle('course.detail', { courseId: 14 })).course.id, 14);
+
+  courses = [another];
+  await reopened.handle('courses.list', { refresh: true, includeHidden: true });
+  assert.deepEqual(await reopened.handle('courses.visibility', { hiddenIds: [] }), { hiddenIds: [] });
+  courses = [course, another];
+  assert.deepEqual(await reopened.handle('courses.list', { refresh: true }), { courses: [another], hiddenIds: ['14'] });
+
+  owner = 'account2';
+  const differentAccount = await reopened.handle('courses.list');
+  assert.deepEqual(differentAccount.hiddenIds, []);
+  assert.equal(differentAccount.courses.length, 2);
+  owner = 'account1';
+  await reopened.handle('courses.visibility', { hiddenIds: [] });
+  assert.equal((await reopened.handle('courses.list')).courses.length, 2);
+});
+
 test('ambiguous classroom names require an account-scoped manual link', async (t) => {
   const dir = await workingDirectory(t);
   const sameTeacher = { ...recent, course_id: '26', session_id: '348' };

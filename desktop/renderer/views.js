@@ -65,11 +65,12 @@ function fileSize(size) {
 
 function attachment(file, scope = 'materials') {
   const available = file.id != null && (file.downloadable || file.wps_preview);
-  const kind = !file.downloadable && file.wps_preview ? '支持预览导出' : '';
+  const preview = !file.downloadable && file.wps_preview;
+  const kind = preview ? '可在线预览' : '';
   const info = [fileSize(file.size), kind].filter(Boolean).join(' · ');
   return '<div class="file"><div class="lead"><strong>' + e(file.name || '附件') + '</strong>' +
     '<span class="subline">' + e(info) + '</span></div><div class="family">' +
-    (available ? button('下载', 'queue:' + scope + ':' + file.id, true) +
+    (available ? button(preview ? '尝试导出' : '下载', 'queue:' + scope + ':' + file.id, true) +
       '<button type="button" class="icon-button" aria-label="另存为" title="另存为" data-action="save:' +
       e(scope + ':' + file.id) + '">⋯</button>' : '<span class="subline">暂无下载</span>') +
     '</div></div>';
@@ -97,9 +98,31 @@ export function overview(data, authStatus) {
 }
 
 export function coursesView(data) {
-  return hero('我的课程') + (data.courses?.length ? list(data.courses.map(course =>
+  return hero('我的课程') + '<div class="actions course-actions">' + button('编辑', 'edit-courses', true) +
+    '</div>' + (data.courses?.length ? list(data.courses.map(course =>
     row(course.name || '课程', [course.instructor, course.semester].filter(Boolean).join(' · '), 'course:' + course.id + ':summary')
-  ).join('')) : empty('暂无课程'));
+  ).join('')) : empty('暂无显示的课程'));
+}
+
+export function courseEditorView(data, editor, loading) {
+  const disabled = editor.saving || loading ? ' disabled' : '';
+  const failure = editor.error ? '<p class="subline error course-edit-error" role="alert">' + e(editor.error) + '</p>' : '';
+  const toolbar = '<div class="actions course-edit-actions"><button type="button" class="press" data-action="cancel-course-edit"' +
+    (editor.saving ? ' disabled' : '') + '>取消</button><button type="button" class="press primary" data-action="finish-course-edit"' +
+    (data ? disabled : ' disabled') + '>' + (editor.saving ? '正在保存…' : '完成') + '</button>' + failure + '</div>';
+  const heading = hero('编辑课程', '勾选要显示的课程');
+  if (!data) return heading + toolbar;
+  const hidden = new Set(data.hiddenIds);
+  const rows = data.courses.map(course => {
+    const id = String(course.id);
+    const visible = editor.visibility.get(id) ?? !hidden.has(id);
+    const label = '显示 ' + (course.name || '课程');
+    return '<label class="row course-visibility"><span class="lead"><strong>' + e(course.name || '课程') +
+      '</strong><span class="subline">' + e([course.instructor, course.semester].filter(Boolean).join(' · ')) +
+      '</span></span><input type="checkbox" data-course-visibility="' + e(id) + '" aria-label="' + e(label) +
+      '"' + (visible ? ' checked' : '') + disabled + '></label>';
+  });
+  return heading + toolbar + (rows.length ? list(rows.join('')) : empty('暂无课程'));
 }
 
 function assignmentRows(data, courseId) {

@@ -177,6 +177,15 @@ html, body, #xdc-glass { width: 100%; height: 100%; margin: 0; overflow: hidden;
 #xdc-glass .form .inline-check { display: flex; align-items: center; gap: 7px; }
 #xdc-glass .actions { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
 #xdc-glass .actions .press:first-child { margin-left: -8px; }
+#xdc-glass .course-actions { margin-bottom: 9px; }
+#xdc-glass .course-edit-actions {
+  position: sticky; top: 57px; z-index: 1;
+  justify-content: flex-end; padding: 6px 8px; margin-bottom: 9px;
+  border-radius: 8px; background: var(--dialog);
+}
+#xdc-glass .course-edit-error { flex-basis: 100%; }
+#xdc-glass .course-visibility { cursor: pointer; }
+#xdc-glass .course-visibility input { flex: none; }
 #xdc-glass .setting-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 #xdc-glass .description { white-space: pre-wrap; overflow-wrap: anywhere; }
 #xdc-glass .notice { bottom: 73px; }

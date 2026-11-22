@@ -2,7 +2,7 @@ import {
   DEFAULT_DESKTOP, clamp, isHex, normalizeDesktop, normalizeLook, normalizeShortcut, applyLook,
 } from './appearance.js';
 import {
-  hero, loadState, overview, coursesView, courseView, assignmentView, sessionView,
+  hero, loadState, overview, coursesView, courseEditorView, courseView, assignmentView, sessionView,
   downloadsView, settingsView, appearanceView, authView,
 } from './views.js';
 
@@ -25,6 +25,7 @@ let auth;
 let queuedJobs;
 let jobUpdating = false;
 let jobEventVersion = 0;
+let courseEditor;
 
 async function invoke(method, payload) {
   if (!desktop?.invoke) throw new Error('桌面服务未启动');
@@ -50,6 +51,7 @@ function attributes(selector, name, value) {
 }
 
 function resourceKey() {
+  if (route.name === 'courses' && courseEditor) return 'course-editor';
   if (route.name === 'course') return 'course:' + route.courseId;
   if (route.name === 'assignment') return 'assignment:' + route.courseId + ':' + route.assignmentId;
   return route.name;
@@ -77,7 +79,8 @@ function render() {
   const progress = current?.loading && !data;
   const pages = {
     overview: () => data ? overview(data, auth) : hero('学习总览'),
-    courses: () => data ? coursesView(data) : hero('我的课程'),
+    courses: () => courseEditor ? courseEditorView(data, courseEditor, current?.loading) :
+      data ? coursesView(data) : hero('我的课程'),
     course: () => data ? courseView(data, route.tab) : hero('课程详情'),
     assignment: () => data ? assignmentView(data) : hero('作业详情'),
     session: () => sessionView(route.session),
@@ -87,9 +90,10 @@ function render() {
     auth: () => authView(auth ?? data, authBusy),
   };
   panel.classList.toggle('unlocked', !prefs.locked);
-  attributes('[data-action=back]', 'hidden', !history.length);
+  attributes('[data-action=back]', 'hidden', !history.length && !courseEditor);
+  attributes('[data-action=back]', 'disabled', Boolean(courseEditor?.saving));
   attributes('[data-action=refresh]', 'hidden', ['appearance', 'settings', 'session'].includes(route.name));
-  attributes('[data-action=refresh]', 'disabled', Boolean(current?.loading || authBusy));
+  attributes('[data-action=refresh]', 'disabled', Boolean(current?.loading || authBusy || courseEditor?.saving));
   const navPage = ['overview', 'courses', 'downloads'].includes(route.name) ? route.name :
     ['course', 'assignment'].includes(route.name) ? 'courses' : '';
   for (const button of root.querySelectorAll('.dock [data-nav]')) {
@@ -125,7 +129,7 @@ function loadPage(refresh = false) {
   const key = resourceKey();
   const { name, courseId, assignmentId } = route;
   if (name === 'overview') return load(key, 'overview.load', { refresh }, refresh);
-  if (name === 'courses') return load(key, 'courses.list', { refresh }, refresh);
+  if (name === 'courses') return load(key, 'courses.list', courseEditor ? { refresh, includeHidden: true } : { refresh }, refresh);
   if (name === 'course') return load(key, 'course.detail', { courseId, refresh }, refresh);
   if (name === 'assignment') return load(key, 'assignment.detail', { courseId, assignmentId }, refresh);
   if (name === 'downloads') return load(key, 'download.jobs', undefined, refresh);
@@ -133,6 +137,7 @@ function loadPage(refresh = false) {
 }
 
 function navigate(next, behavior = 'push') {
+  discardCourseEditor();
   if (behavior === 'push') history.push(route);
   else if (behavior === 'root') history = [];
   route = next;
@@ -145,7 +150,63 @@ function navigate(next, behavior = 'push') {
 function rememberView() {
   const { name, courseId, assignmentId, tab } = route;
   if (!['overview', 'courses', 'downloads', 'course', 'assignment'].includes(name)) return;
-  void invoke('desktop.rememberView', { name, courseId, assignmentId, tab, scroll: main.scrollTop }).catch(() => {});
+  void invoke('desktop.rememberView', {
+    name, courseId, assignmentId, tab, scroll: courseEditor?.scroll ?? main.scrollTop,
+  }).catch(() => {});
+}
+
+function openCourseEditor() {
+  if (courseEditor || route.name !== 'courses') return;
+  courseEditor = { visibility: new Map(), scroll: main.scrollTop, saving: false };
+  main.scrollTop = 0;
+  const pending = loadPage();
+  main.querySelector('[data-action=cancel-course-edit]')?.focus({ preventScroll: true });
+  return pending;
+}
+
+function discardCourseEditor() {
+  courseEditor = undefined;
+  store.delete('course-editor');
+}
+
+async function finishCourseEditor() {
+  const scroll = courseEditor?.scroll ?? 0;
+  discardCourseEditor();
+  render();
+  await loadPage();
+  if (route.name === 'courses' && !courseEditor) {
+    main.scrollTop = scroll;
+    main.querySelector('[data-action=edit-courses]')?.focus({ preventScroll: true });
+  }
+}
+
+async function saveCourseVisibility() {
+  const slot = store.get('course-editor');
+  if (!courseEditor || courseEditor.saving || slot?.loading || !slot?.data) return;
+  const { courses, hiddenIds } = slot.data;
+  const hidden = new Set(hiddenIds);
+  const initial = new Set(hidden);
+  for (const course of courses) {
+    const id = String(course.id);
+    const visible = courseEditor.visibility.get(id);
+    if (visible === true) hidden.delete(id);
+    if (visible === false) hidden.add(id);
+  }
+  if (hidden.size === initial.size && [...hidden].every(id => initial.has(id))) return finishCourseEditor();
+
+  courseEditor.saving = true;
+  courseEditor.error = undefined;
+  render();
+  try {
+    await invoke('courses.visibility', { hiddenIds: [...hidden] });
+    store.delete('courses');
+  } catch (error) {
+    courseEditor.saving = false;
+    courseEditor.error = error.message || '课程显示设置未保存';
+    render();
+    return;
+  }
+  return finishCourseEditor();
 }
 
 function updateAppearanceFeedback() {
@@ -252,7 +313,6 @@ async function enqueue(scope, id, alternate) {
     payload.directory = directory;
   }
   await invoke('download.enqueue', payload);
-  toast('已加入下载记录');
 }
 
 async function updateQueue(method, payload) {
@@ -294,11 +354,15 @@ async function runAuth(method, payload) {
 
 async function runAction(action) {
   const [name, value, third] = action.split(':');
-  if (name === 'back') return navigate(history.pop() ?? { name: 'overview' }, 'replace');
+  if (name === 'back') return courseEditor ? finishCourseEditor() :
+    navigate(history.pop() ?? { name: 'overview' }, 'replace');
   if (name === 'refresh') return loadPage(true);
   if (name === 'settings') return route.name === 'settings'
     ? navigate(history.pop() ?? { name: 'overview' }, 'replace') : navigate({ name: 'settings' });
   if (name === 'course') return navigate({ name: 'course', courseId: value, tab: third || 'summary' });
+  if (name === 'edit-courses') return openCourseEditor();
+  if (name === 'cancel-course-edit') return finishCourseEditor();
+  if (name === 'finish-course-edit') return saveCourseVisibility();
   if (name === 'tab') return navigate({ ...route, tab: value }, 'replace');
   if (name === 'assignment') return navigate({ name: 'assignment', courseId: value, assignmentId: third });
   if (name === 'overview-session' || name === 'recent-session' || name === 'course-session') {
@@ -365,7 +429,7 @@ function onGeometryInput(input) {
 
 root.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
-  if (!button) return;
+  if (!button || courseEditor?.saving) return;
   if (button.dataset.nav) {
     await navigate({ name: button.dataset.nav }, 'root');
     return;
@@ -384,6 +448,10 @@ root.addEventListener('click', async (event) => {
 root.addEventListener('input', event => onLookInput(event.target));
 root.addEventListener('change', async event => {
   const input = event.target;
+  if (input.dataset.courseVisibility) {
+    courseEditor?.visibility.set(input.dataset.courseVisibility, input.checked);
+    return;
+  }
   if (onGeometryInput(input)) return;
   if (input.hasAttribute('data-hex')) input.value = prefs.look.accent.toUpperCase();
   if (input.hasAttribute('data-shortcut')) {
@@ -431,8 +499,18 @@ main.addEventListener('scroll', () => {
 desktop?.onEvent?.(event => {
   if (event.type === 'download.changed') {
     jobEventVersion++;
+    const previous = new Map(queuedJobs?.jobs.map(job => [job.id, job.status]));
     queuedJobs = { jobs: event.jobs, paused: event.paused };
     if (route.name === 'downloads') render();
+    const finished = event.jobs.findLast(job =>
+      ['queued', 'running'].includes(previous.get(job.id)) && ['completed', 'failed'].includes(job.status));
+    if (finished?.status === 'failed') {
+      toast(finished.error?.message || '下载失败，请到下载记录查看');
+    } else if (finished?.status === 'completed') {
+      toast(finished.result?.page_count ? `已导出 ${finished.result.page_count} 页 PDF` : '下载完成');
+    } else if (event.jobs.some(job => !previous.has(job.id) && ['queued', 'running'].includes(job.status))) {
+      toast(event.paused ? '已加入队列，下载已暂停' : '已加入队列，可在下载记录查看进度');
+    }
     return;
   }
   if (event.type === 'desktop.geometry') {
