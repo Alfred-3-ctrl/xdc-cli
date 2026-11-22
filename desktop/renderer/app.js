@@ -169,7 +169,7 @@ function reflectPreferences() {
 
 function previewGeometry() {
   const version = ++previewVersion;
-  const request = { geometry: { ...prefs.geometry }, locked: prefs.locked };
+  const request = { geometry: { ...prefs.geometry }, locked: prefs.locked, radius: prefs.look.radius };
   previewTask = previewTask.catch(() => {}).then(async () => {
     if (version !== previewVersion) return;
     try {
@@ -344,6 +344,7 @@ function onLookInput(input) {
     const output = main.querySelector('[data-value=' + key + ']');
     if (output) output.textContent = prefs.look[key] + output.dataset.unit;
     reflectPreferences();
+    if (key === 'radius') previewGeometry();
   } else if (input.hasAttribute('data-hex') && isHex(input.value)) {
     prefs.look.accent = input.value.toLowerCase();
     attributes('[data-look=accent]', 'value', prefs.look.accent);

@@ -6,6 +6,7 @@ import { createDesktopAuth } from './auth.js';
 import { createDesktopData, DATA_METHODS } from './data.js';
 import { DEFAULT_LOOK, normalizeBounds, normalizeLook, normalizeShortcut, readPreferences, savePreferences } from './preferences.js';
 import { startWindowsMonitor } from './windows.js';
+import { roundedWindowShape } from './window-shape.js';
 
 const appDirectory = path.dirname(fileURLToPath(import.meta.url));
 const rendererDirectory = path.join(appDirectory, 'renderer');
@@ -86,6 +87,8 @@ async function launch() {
   let quitting = false;
   let shortcutRegistered;
   let lastWindowBounds = prefs.geometry;
+  let cornerRadius = prefs.look.radius;
+  let shapeKey;
   const pickedDirectories = new Set();
   const emit = (event) => {
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('xdc:event', event);
@@ -116,10 +119,28 @@ async function launch() {
     try { savePreferences(viewFile, { savedAt: Date.now(), view }); } catch {}
   }
   const desktopState = () => ({ ...prefs, geometry: win?.getContentBounds() ?? lastWindowBounds, resume: view });
+  function applyWindowShape() {
+    if (!windows || !win || win.isDestroyed()) return;
+    const outer = win.getBounds();
+    const content = win.getContentBounds();
+    const { scaleFactor } = screen.getDisplayMatching(outer);
+    const key = [content.x - outer.x, content.y - outer.y, content.width, content.height, cornerRadius, scaleFactor].join(':');
+    if (shapeKey === key) return;
+    try {
+      win.setShape(roundedWindowShape(outer, content, cornerRadius));
+      shapeKey = key;
+    } catch {
+      // Avoid drawing a system backdrop outside the web view's rounded mask.
+      shapeKey = undefined;
+      try { win.setBackgroundMaterial('none'); } catch {}
+      try { win.setShape([]); } catch {}
+    }
+  }
   function applyLock(locked) {
     if (!win) return;
-    win.setMovable(!locked);
-    win.setResizable(!locked);
+    if (win.isMovable() === locked) win.setMovable(!locked);
+    if (win.isResizable() === locked) win.setResizable(!locked);
+    applyWindowShape();
   }
   function onShortcut() {
     if (!win?.isVisible()) return;
@@ -156,23 +177,28 @@ async function launch() {
       },
     });
     win = current;
-    applyLock(prefs.locked);
+    cornerRadius = prefs.look.radius;
+    shapeKey = undefined;
     current.removeMenu();
     if (windows && Number(process.getSystemVersion().split('.').at(-1)) >= 22621) {
       try { current.setBackgroundMaterial('acrylic'); } catch {}
     }
+    applyLock(prefs.locked);
     current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     current.webContents.on('will-navigate', (event, target) => {
       if (target !== rendererUrl) event.preventDefault();
     });
     current.once('ready-to-show', () => {
       if (current.isDestroyed() || uuActive) return;
+      applyWindowShape();
       if (active) current.show();
       else current.showInactive();
       monitor?.keepAtBottom(current);
     });
     current.on('blur', () => monitor?.keepAtBottom(current));
     const updateBounds = () => {
+      if (current !== win || current.isDestroyed()) return;
+      applyWindowShape();
       clearTimeout(geometryTimer);
       geometryTimer = setTimeout(() => {
         if (current.isDestroyed()) return;
@@ -204,8 +230,16 @@ async function launch() {
         view = normalizeView(payload) ?? view;
         return { ok: true };
       case 'desktop.preview': {
+        if (Number.isFinite(payload.radius)) {
+          cornerRadius = normalizeLook({ radius: payload.radius }, prefs.look).radius;
+        }
         if (typeof payload.locked === 'boolean') applyLock(payload.locked);
-        if (payload.geometry && win) win.setContentBounds(bound(payload.geometry, win.getContentBounds()));
+        if (payload.geometry && win) {
+          const before = win.getContentBounds();
+          const after = bound(payload.geometry, before);
+          if (Object.keys(after).some(key => after[key] !== before[key])) win.setContentBounds(after);
+        }
+        applyWindowShape();
         return { geometry: win?.getContentBounds() ?? lastWindowBounds, locked: payload.locked ?? prefs.locked };
       }
       case 'desktop.save': {
@@ -235,6 +269,7 @@ async function launch() {
           throw error;
         }
         Object.assign(prefs, next);
+        cornerRadius = next.look.radius;
         if (win) win.setContentBounds(next.geometry);
         lastWindowBounds = next.geometry;
         applyLock(next.locked);
@@ -341,6 +376,7 @@ async function launch() {
     lastWindowBounds = bound(lastWindowBounds);
     win?.setContentBounds(lastWindowBounds);
   });
+  screen.on('display-metrics-changed', applyWindowShape);
   registerShortcut(prefs.shortcut);
   if (windows) {
     try {
