@@ -14,6 +14,7 @@ const MAX_EXPORT_BYTES = 256 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 20_000_000;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const REDIRECT = new Set([301, 302, 303, 307, 308]);
+const CLASSROOM_MEDIA_HOST = 'video.cmc.zju.edu.cn';
 
 function classroomAuthError(status = 401) {
   return new ApiError('智云课堂会话未建立或已失效', {
@@ -60,6 +61,11 @@ function imageUrl(input, base = CLASSROOM_ORIGIN) {
     if (typeof input === 'string' && input) url = new URL(input, base);
   } catch {
     throw invalidResponse('智云课堂返回了无效的幻灯片地址');
+  }
+  // Some classroom metadata still uses HTTP links for the campus CDN.
+  if (url?.protocol === 'http:' && url.hostname === CLASSROOM_MEDIA_HOST &&
+      !url.port && !url.username && !url.password) {
+    url.protocol = 'https:';
   }
   if (url?.protocol !== 'https:' || url.port || url.username || url.password ||
       !url.hostname.endsWith('.zju.edu.cn')) {

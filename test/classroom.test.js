@@ -106,6 +106,39 @@ test('classroom accepts a complete first batch that exceeds the requested batch 
   assert.deepEqual(slides.at(-1), { page: 224, url: 'https://cdn.zju.edu.cn/224.png' });
 });
 
+test('classroom upgrades legacy campus media links before downloading without sending credentials', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'xdc-classroom-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  let mediaUrl = 'http://video.cmc.zju.edu.cn/slides/test.jpg?signature=abc%2Bdef';
+  const requested = [];
+  const client = new ClassroomClient({
+    jar: jarWithSession(),
+    fetchImpl: async (input, { headers }) => {
+      const url = new URL(input);
+      if (url.hostname === 'classroom.zju.edu.cn') {
+        return Response.json({ total: 1, list: [{ content: { pptimgurl: mediaUrl } }] });
+      }
+      assert.equal(headers.cookie, undefined);
+      assert.equal(headers.authorization, undefined);
+      requested.push(input);
+      return new Response(jpeg, { headers: { 'content-type': 'image/jpeg' } });
+    },
+  });
+  const output = path.join(dir, 'lesson.pdf');
+  const result = await client.exportPdf('77', '54', output);
+  assert.equal(result.page_count, 1);
+  assert.deepEqual(requested, ['https://video.cmc.zju.edu.cn/slides/test.jpg?signature=abc%2Bdef']);
+
+  for (const invalid of [
+    'http://other.zju.edu.cn/slides/test.jpg',
+    'http://video.cmc.zju.edu.cn:8080/slides/test.jpg',
+    'http://credentials@video.cmc.zju.edu.cn/slides/test.jpg',
+  ]) {
+    mediaUrl = invalid;
+    await assert.rejects(client.slides('77', '54'), { code: 'BAD_RESPONSE' });
+  }
+});
+
 test('classroom exports an ordered PDF and leaves no final file for missing pages', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'xdc-classroom-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
