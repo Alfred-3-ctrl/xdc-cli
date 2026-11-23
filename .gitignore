@@ -5,3 +5,4 @@ node_modules/
 *session.json
 *session.json.*.tmp
 .probe/
+/desktop/native-glass/

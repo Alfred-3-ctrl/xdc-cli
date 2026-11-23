@@ -62,6 +62,19 @@ internal static class UuMonitor
     private static int sessionId;
     private static string monitoredProcess;
     private static long desktopWindow;
+    private static volatile BackdropWindow backdropWindow;
+
+    private sealed class BackdropWindow
+    {
+        public readonly IntPtr Handle;
+        public readonly uint ProcessId;
+
+        public BackdropWindow(long handle, uint processId)
+        {
+            Handle = new IntPtr(handle);
+            ProcessId = processId;
+        }
+    }
 
     private static void Send(string message)
     {
@@ -128,6 +141,10 @@ internal static class UuMonitor
         // Insert immediately above Explorer's desktop surface. HWND_BOTTOM can
         // put the widget behind the surface. Avoid crossing into the topmost band.
         IntPtr above = GetWindow(surface, GW_HWNDPREV);
+        BackdropWindow backdrop = backdropWindow;
+        if (backdrop != null && above == backdrop.Handle &&
+            GetWindowThreadProcessId(above, out process) != 0 && process == backdrop.ProcessId)
+            above = GetWindow(above, GW_HWNDPREV);
         if (above == window) return;
         if (above == IntPtr.Zero || IsTopmost(above))
         {
@@ -167,6 +184,16 @@ internal static class UuMonitor
                 {
                     Interlocked.Exchange(ref desktopWindow, handle);
                     PlaceOnDesktop();
+                }
+            }
+            else if (command.StartsWith("backdrop ", StringComparison.Ordinal))
+            {
+                string[] values = command.Substring(9).Split(' ');
+                long handle;
+                uint process;
+                if (values.Length == 2 && long.TryParse(values[0], out handle) && uint.TryParse(values[1], out process))
+                {
+                    backdropWindow = handle > 0 && process > 0 ? new BackdropWindow(handle, process) : null;
                 }
             }
         }

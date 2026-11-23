@@ -33,6 +33,7 @@ export async function startWindowsMonitor({ userData, appDirectory, onUu, onExit
   }
   return {
     placeOnDesktop: (win) => native?.placeOnDesktop(win),
+    setBackdrop: (handle, pid) => native?.setBackdrop(handle, pid),
     releaseDesktop: () => native?.releaseDesktop(),
     arm: () => native?.arm() ?? Promise.resolve(false),
     disarm: () => native?.disarm(),
@@ -142,6 +143,9 @@ export function bindWindowsMonitor(child, { onUu, onExit }) {
       const handle = win.getNativeWindowHandle();
       const value = handle.length === 8 ? handle.readBigInt64LE() : BigInt(handle.readUInt32LE());
       child.stdin.write(`desktop ${value}\n`);
+    },
+    setBackdrop(handle = '0', pid = 0) {
+      if (!closed) child.stdin.write(`backdrop ${handle} ${pid}\n`);
     },
     releaseDesktop() {
       if (!closed) child.stdin.write('desktop 0\n');

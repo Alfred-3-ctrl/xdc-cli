@@ -51,6 +51,15 @@ test('a blocked native launch releases pending requests and triggers fallback on
   child.stdin.end();
 });
 
+test('the desktop monitor can register and release the separate glass layer', () => {
+  const { child, monitor, commands } = monitorFixture();
+  monitor.setBackdrop('1048577', 8765);
+  monitor.setBackdrop();
+  assert.deepEqual(commands, ['backdrop 1048577 8765', 'backdrop 0 0']);
+  child.stdout.end();
+  monitor.disconnect();
+});
+
 test('tasklist failures preserve UU state and disconnect stops the watcher', async () => {
   const states = [];
   let calls = 0;

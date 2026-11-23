@@ -6,6 +6,7 @@ import { createDesktopAuth } from './auth.js';
 import { createDesktopData, DATA_METHODS } from './data.js';
 import { DEFAULT_LOOK, normalizeBounds, normalizeLook, normalizeShortcut, readPreferences, savePreferences } from './preferences.js';
 import { startWindowsMonitor } from './windows.js';
+import { startNativeGlass } from './native-glass.js';
 import { roundedWindowShape } from './window-shape.js';
 import { createWindowsLaunchEntries } from './startup.js';
 
@@ -83,6 +84,7 @@ async function launch() {
   };
   let win;
   let monitor;
+  let glass;
   let geometryTimer;
   let uuActive = false;
   let pausedAt = 0;
@@ -143,6 +145,12 @@ async function launch() {
     if (win.isResizable() === locked) win.setResizable(!locked);
     applyWindowShape();
   }
+  function closeGlass() {
+    if (!glass) return;
+    monitor?.setBackdrop();
+    glass.close();
+    glass = undefined;
+  }
   function onShortcut() {
     if (!win?.isVisible()) return;
     prefs.locked = !prefs.locked;
@@ -176,7 +184,7 @@ async function launch() {
       ...bounds, frame: false, transparent: true, hasShadow: false, show: false, skipTaskbar: true, useContentSize: true,
       maximizable: false, fullscreenable: false, minimizable: false, alwaysOnTop: false,
       minWidth: Math.min(320, bounds.width), minHeight: Math.min(520, bounds.height),
-      // A system backdrop can fill the rectangular bounds beyond the renderer's rounded alpha.
+      // The paired native window draws the backdrop inside its own rounded clip.
       ...(windows && { backgroundMaterial: 'none' }),
       backgroundColor: '#00000000',
       title: '学习桌面',
@@ -195,11 +203,26 @@ async function launch() {
       if (target !== rendererUrl) event.preventDefault();
     });
     current.once('ready-to-show', () => {
-      if (current.isDestroyed() || uuActive) return;
+      if (current.isDestroyed() || uuActive || quitting) return;
       applyWindowShape();
       if (active) current.show();
       else current.showInactive();
       placeOnDesktop(current);
+      if (windows) {
+        glass = startNativeGlass({
+          window: current, radius: cornerRadius,
+          onReady({ handle, pid }) {
+            if (current !== win || current.isDestroyed() || uuActive || quitting) return;
+            monitor?.setBackdrop(handle, pid);
+            placeOnDesktop(current);
+          },
+          onExit({ reason }) {
+            if (current !== win || uuActive || quitting) return;
+            monitor?.setBackdrop();
+            if (reason !== 'missing') console.warn('Native glass unavailable:', reason);
+          },
+        });
+      }
     });
     current.on('blur', () => placeOnDesktop(current));
     current.on('restore', () => placeOnDesktop(current));
@@ -213,6 +236,7 @@ async function launch() {
     });
     current.on('session-end', () => {
       quitting = true;
+      closeGlass();
       monitor?.releaseDesktop();
       monitor?.disarm();
       storeView();
@@ -229,7 +253,11 @@ async function launch() {
     };
     current.on('move', updateBounds);
     current.on('resize', updateBounds);
-    current.on('closed', () => { if (win === current) win = undefined; });
+    current.on('closed', () => {
+      if (win !== current) return;
+      closeGlass();
+      win = undefined;
+    });
     void current.loadURL(rendererUrl).catch(() => {
       if (!current.isDestroyed()) dialog.showErrorBox('学习桌面', '窗口加载失败，请重新打开组件。');
     });
@@ -249,6 +277,7 @@ async function launch() {
       case 'desktop.preview': {
         if (Number.isFinite(payload.radius)) {
           cornerRadius = normalizeLook({ radius: payload.radius }, prefs.look).radius;
+          glass?.setRadius(cornerRadius);
         }
         if (typeof payload.locked === 'boolean') applyLock(payload.locked);
         if (payload.geometry && win) {
@@ -287,6 +316,7 @@ async function launch() {
         }
         Object.assign(prefs, next);
         cornerRadius = next.look.radius;
+        glass?.setRadius(cornerRadius);
         if (win) win.setContentBounds(next.geometry);
         lastWindowBounds = next.geometry;
         applyLock(next.locked);
@@ -326,6 +356,7 @@ async function launch() {
   async function finishAndQuit() {
     if (quitting) return;
     quitting = true;
+    closeGlass();
     monitor?.releaseDesktop();
     monitor?.disarm();
     storeView();
@@ -371,6 +402,7 @@ async function launch() {
       new Notification({ title: '学习桌面', body: '当前文件仍在处理，剩余队列将在 UU 退出后继续。' }).show();
     }
     if (win) {
+      closeGlass();
       monitor?.releaseDesktop();
       lastWindowBounds = win.getContentBounds();
       storeView();
@@ -391,6 +423,7 @@ async function launch() {
   app.on('window-all-closed', () => {});
   app.on('will-quit', () => {
     quitting = true;
+    closeGlass();
     globalShortcut.unregisterAll();
     monitor?.disconnect();
   });

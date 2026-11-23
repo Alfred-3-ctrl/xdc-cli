@@ -9,10 +9,13 @@
 ```powershell
 npm ci
 npm --prefix desktop ci
+npm --prefix desktop run build:native-glass
 npm --prefix desktop start
 ```
 
 组件支持总览、课程详情和下载队列。它复用 CLI 的本地会话，首次登录可以选择让 Windows 加密保存统一认证凭据。设置页提供外观、窗口位置和尺寸、布局快捷键、下载目录及登录 Windows 时启动。首次运行会添加「学习桌面」开始菜单入口。
+
+原生玻璃需要 Windows 11 22H2 或更新版本及 x64 .NET 10 Desktop Runtime。构建时用 .NET 10 SDK 运行 `build:native-glass`，生成的合成程序由学习桌面启动。圆角和透明度仍在原外观设置里调整。原生程序缺失或系统不允许运行时，组件使用透明圆角。独立原型和签名说明见 [原生玻璃](prototypes/native-glass/README.md)。
 
 Windows 下由本机辅助进程检测 `uu.exe`。运行 UU 时组件收起，正在处理的文件完成后退出。UU 退出后组件恢复，排队任务继续。辅助进程首次运行时使用 Windows 自带的 .NET Framework 编译器构建。
 
