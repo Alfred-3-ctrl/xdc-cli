@@ -28,6 +28,16 @@ npm --prefix desktop start
 - 网页评审使用模拟课程。运行 `node prototypes/ui-review/serve.mjs` 后在本机浏览器打开 `http://127.0.0.1:5179/`。
 - 单 HWND、D3D11 和 Composition 的研究代码见[单窗口实验](prototypes/single-hwnd-composition/README.md)。
 
+### Windows x64 发布包
+
+在 [GitHub Releases](https://github.com/Alfred-3-ctrl/xdc-cli/releases) 下载预构建 ZIP 后，将整个目录解压到固定位置，再运行 `desktop/native-bin/Xdc.NativeDesktop.exe`。运行所需组件随包提供，解压后查看 `README.txt`。不同设备的智能应用控制可能要求可信代码签名，包内的 `release.json` 记录原生宿主签名状态和源码提交。
+
+维护者可在 Windows 11 上用 Node.js 22.12+ 和 x64 .NET 10 SDK 构建。以下命令将应用、后台服务和依赖打包到独立目录，并生成 SHA256 校验文件。
+
+```powershell
+./scripts/build-windows-package.ps1 -OutputDirectory (Join-Path $PWD 'dist')
+```
+
 - 命令：**`xdc`**（别名 `xzzd`）
 - 认证：浙大统一身份认证（CAS + Keycloak）
 - 依赖：Node ≥ 20.3，智云课件通过 `pdf-lib` 合成 PDF

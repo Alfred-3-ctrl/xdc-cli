@@ -11,3 +11,4 @@ node_modules/
 /desktop/native/obj/
 /prototypes/*/bin/
 /prototypes/*/obj/
+/dist/
