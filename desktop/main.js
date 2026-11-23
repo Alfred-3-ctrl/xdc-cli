@@ -7,6 +7,7 @@ import { createDesktopData, DATA_METHODS } from './data.js';
 import { DEFAULT_LOOK, normalizeBounds, normalizeLook, normalizeShortcut, readPreferences, savePreferences } from './preferences.js';
 import { startWindowsMonitor } from './windows.js';
 import { roundedWindowShape } from './window-shape.js';
+import { createWindowsLaunchEntries } from './startup.js';
 
 const appDirectory = path.dirname(fileURLToPath(import.meta.url));
 const rendererDirectory = path.join(appDirectory, 'renderer');
@@ -19,9 +20,10 @@ const OFFICIAL = {
 };
 const defaultShortcut = 'Ctrl+Shift+L';
 const windows = process.platform === 'win32';
+const appId = 'Alfred.xdc.Desktop';
 app.setName('学习桌面');
 app.setPath('userData', path.join(app.getPath('appData'), 'xdc-desktop'));
-if (windows) app.setAppUserModelId('Alfred.xdc.Desktop');
+if (windows) app.setAppUserModelId(appId);
 protocol.registerSchemesAsPrivileged([{ scheme: 'xdc', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 function handleStatic(request) {
@@ -60,6 +62,7 @@ function denied(message, code = 'USAGE') {
 async function launch() {
   protocol.handle('xdc', handleStatic);
   const userData = app.getPath('userData');
+  const launchEntries = windows ? createWindowsLaunchEntries({ app, shell, appId, appDirectory }) : null;
   const preferenceFile = path.join(userData, 'preferences.json');
   const viewFile = path.join(userData, 'last-view.json');
   const stored = readPreferences(preferenceFile);
@@ -218,10 +221,6 @@ async function launch() {
     return isAbsoluteDirectory(directory) && (uniquePaths(directory, prefs.downloadDirectory)
       || [...pickedDirectories].some(picked => uniquePaths(picked, directory)));
   }
-  function updateStartup(enabled) {
-    if (!windows || enabled === prefs.startup) return;
-    app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath, args: [appDirectory] });
-  }
   async function desktop(method, payload) {
     switch (method) {
       case 'desktop.get':
@@ -259,12 +258,12 @@ async function launch() {
           downloadDirectory: payload.downloadDirectory ?? prefs.downloadDirectory,
         };
         try {
-          updateStartup(next.startup);
+          if (next.startup !== prefs.startup) launchEntries?.setStartup(next.startup);
           savePreferences(preferenceFile, next);
         } catch (error) {
           registerShortcut(prefs.shortcut);
-          if (windows && next.startup !== prefs.startup) {
-            try { app.setLoginItemSettings({ openAtLogin: prefs.startup, path: process.execPath, args: [appDirectory] }); } catch {}
+          if (next.startup !== prefs.startup) {
+            try { launchEntries?.setStartup(prefs.startup); } catch {}
           }
           throw error;
         }
@@ -380,15 +379,11 @@ async function launch() {
   registerShortcut(prefs.shortcut);
   if (windows) {
     try {
-      const programs = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs');
-      const shortcut = path.join(programs, '学习桌面.lnk');
-      fs.mkdirSync(programs, { recursive: true });
-      if (!fs.existsSync(shortcut) || shell.readShortcutLink(shortcut).target === process.execPath) {
-        shell.writeShortcutLink(shortcut, {
-          target: process.execPath, args: `"${appDirectory}"`, cwd: appDirectory, appUserModelId: 'Alfred.xdc.Desktop',
-        });
-      }
+      launchEntries.installStartMenu();
     } catch {}
+    if (prefs.startup) {
+      try { launchEntries.setStartup(true, { respectWindowsApproval: true }); } catch {}
+    }
     try {
       monitor = await startWindowsMonitor({
         userData, appDirectory,
