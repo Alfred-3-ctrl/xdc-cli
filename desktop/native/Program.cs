@@ -63,7 +63,16 @@ internal static class Program
         {
             if (options?.Report is { } path)
             {
-                try { File.WriteAllText(path, JsonSerializer.Serialize(new { ready = false, error = error.Message })); }
+                try
+                {
+                    File.WriteAllText(path, JsonSerializer.Serialize(new
+                    {
+                        ready = false,
+                        error = error.Message,
+                        exception = error.GetType().FullName,
+                        stack = error.StackTrace,
+                    }));
+                }
                 catch (IOException) { }
                 catch (UnauthorizedAccessException) { }
             }

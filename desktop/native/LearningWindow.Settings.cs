@@ -88,14 +88,23 @@ internal sealed partial class LearningWindow
         changes = null;
         saveAppearance = null;
         BeginPage("外观与布局");
-        var tabs = new FlowLayoutPanel { Height = Dip(40), WrapContents = false, BackColor = CanvasKey };
+        var tabs = new FlowLayoutPanel { Height = Dip(38), WrapContents = false, BackColor = CanvasKey };
         foreach (var item in new[] { (Key: "look", Text: "外观"), (Key: "layout", Text: "布局") })
-            tabs.Controls.Add(ActionButton(item.Text, () =>
+        {
+            bool selected = appearanceTab == item.Key;
+            var button = (GlassButton)ActionButton(item.Text, () =>
             {
                 appearanceTab = item.Key;
                 _ = ShowAppearance();
-            }, appearanceTab == item.Key));
+            });
+            button.Width = Dip(52);
+            button.Height = Dip(29);
+            button.BackColor = selected ? Chrome : Surface;
+            button.ForeColor = selected ? Foreground : Secondary;
+            tabs.Controls.Add(button);
+        }
         AddContent(tabs);
+        AddContent(new Panel { Height = 1, BackColor = Rule, Margin = new Padding(0, 0, 0, Dip(6)) });
         if (appearanceTab == "look")
         {
             Choice("主题", prefs.Look.Scheme, [("system", "跟随系统"), ("light", "浅色"), ("dark", "深色")],
@@ -109,12 +118,12 @@ internal sealed partial class LearningWindow
         else
         {
             dimensions = SettingLabel("");
-            AddContent(dimensions);
-            AddContent(ActionButton(prefs.Locked ? "解锁布局" : "锁定布局", () =>
+            var lockButton = ActionButton(prefs.Locked ? "解锁布局" : "锁定布局", () =>
             {
                 prefs = prefs with { Locked = !prefs.Locked };
                 _ = ShowAppearance();
-            }));
+            });
+            SettingRow(dimensions, lockButton, 93);
             if (!prefs.Locked)
             {
                 widthControl = GeometryInput("宽度", prefs.Geometry.Width, 320, 620, value =>
@@ -122,7 +131,6 @@ internal sealed partial class LearningWindow
                 heightControl = GeometryInput("高度", prefs.Geometry.Height, 520, 820, value =>
                     PreviewBounds(prefs.Geometry with { Height = value }));
             }
-            AddContent(SettingLabel("布局快捷键"));
             var shortcut = Input("布局快捷键", prefs.Shortcut);
             shortcut.MaxLength = 28;
             shortcut.TextChanged += (_, _) =>
@@ -130,46 +138,81 @@ internal sealed partial class LearningWindow
                 prefs = prefs with { Shortcut = shortcut.Text };
                 UpdateAppearanceFeedback();
             };
-            AddContent(shortcut);
-            Choice("列表密度", prefs.Look.Density, [("compact", "紧凑"), ("regular", "普通"), ("comfortable", "宽松")],
+            SettingRow(SettingLabel("布局快捷键"), shortcut, 133);
+            Choice("列表密度", prefs.Look.Density, [("compact", "紧凑"), ("regular", "标准"), ("comfortable", "宽松")],
                 value => PreviewLook(prefs.Look with { Density = value }));
-            Choice("底栏显示", prefs.Look.NavStyle, [("both", "图标与文字"), ("text", "文字"), ("icons", "图标")],
+            Choice("底栏显示", prefs.Look.NavStyle, [("both", "图标与文字"), ("text", "仅文字"), ("icons", "仅图标")],
                 value => PreviewLook(prefs.Look with { NavStyle = value }));
             Choice("底栏位置", prefs.Look.NavAlign, [("left", "靠左"), ("center", "居中"), ("right", "靠右")],
                 value => PreviewLook(prefs.Look with { NavAlign = value }));
             Range("窗口圆角", 16, 36, prefs.Look.Radius, " px", value =>
                 PreviewLook(prefs.Look with { Radius = value }));
         }
-        var actions = new FlowLayoutPanel { Height = Dip(42), BackColor = CanvasKey, WrapContents = false };
-        actions.Controls.Add(ActionButton("恢复默认", ResetAppearance));
+        var actions = new Panel { Height = Dip(44), BackColor = CanvasKey, Margin = new Padding(0, Dip(14), 0, 0) };
+        var reset = ActionButton("恢复默认", ResetAppearance);
         saveAppearance = ActionButton("保存", SaveAppearance, primary: true);
-        actions.Controls.Add(saveAppearance);
         changes = SettingLabel("");
-        changes.AutoSize = true;
+        var save = saveAppearance;
+        var feedback = changes;
+        feedback.ForeColor = Secondary;
+        feedback.TextAlign = ContentAlignment.MiddleRight;
+        void PlaceActions()
+        {
+            reset.Width = Dip(84);
+            save.Width = Dip(56);
+            save.Left = actions.ClientSize.Width - save.Width;
+            feedback.SetBounds(Math.Max(reset.Right, save.Left - Dip(66)), 0, Dip(57), save.Height);
+        }
+        actions.Controls.Add(reset);
+        actions.Controls.Add(save);
         actions.Controls.Add(changes);
+        actions.Resize += (_, _) => PlaceActions();
         AddContent(actions);
+        PlaceActions();
         RefreshLayoutDimensions();
         UpdateAppearanceFeedback();
         return Task.CompletedTask;
     }
 
-    private Label SettingLabel(string text) => new()
+    private Label SettingLabel(string text)
     {
-        Text = text,
-        ForeColor = Foreground,
-        BackColor = Surface,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Height = Dip(25),
-        Padding = new Padding(Dip(7), 0, Dip(7), 0),
-        Margin = new Padding(0, Dip(2), 0, 0),
-    };
+        var label = new GlassLabel
+        {
+            Text = text,
+            ForeColor = Foreground,
+            BackColor = CanvasKey,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Height = Dip(25),
+        };
+        SetOwnedFont(label, TextFont(13));
+        return label;
+    }
+
+    private void SettingRow(Label title, Control control, int logicalWidth)
+    {
+        var row = new Panel { Height = Dip(49), BackColor = CanvasKey, Margin = Padding.Empty };
+        var divider = new Panel { BackColor = Rule };
+        void PlaceControls()
+        {
+            int width = Math.Min(Dip(logicalWidth), Math.Max(1, row.ClientSize.Width - Dip(80)));
+            control.SetBounds(row.ClientSize.Width - width, (row.ClientSize.Height - control.Height) / 2, width, control.Height);
+            title.SetBounds(0, 0, Math.Max(1, control.Left - Dip(9)), row.ClientSize.Height - 1);
+            divider.SetBounds(0, row.ClientSize.Height - 1, row.ClientSize.Width, 1);
+        }
+        row.Controls.Add(title);
+        row.Controls.Add(control);
+        row.Controls.Add(divider);
+        row.Resize += (_, _) => PlaceControls();
+        AddContent(row);
+        PlaceControls();
+    }
 
     private void Choice(string label, string selected, (string Key, string Text)[] options, Action<string> change)
     {
-        AddContent(SettingLabel(label));
         var select = new ComboBox
         {
             AccessibleName = label, DropDownStyle = ComboBoxStyle.DropDownList,
+            FlatStyle = FlatStyle.Flat,
             BackColor = Surface, ForeColor = Foreground,
         };
         select.Items.AddRange(options.Select(value => value.Text).ToArray());
@@ -178,18 +221,23 @@ internal sealed partial class LearningWindow
         {
             if (select.SelectedIndex >= 0) change(options[select.SelectedIndex].Key);
         };
-        AddContent(select);
+        SetOwnedFont(select, TextFont(13));
+        SettingRow(SettingLabel(label), select, 140);
     }
 
     private void Range(string label, int min, int max, int value, string unit, Action<int> change)
     {
-        var readout = SettingLabel(label + " " + value + unit);
-        AddContent(readout);
-        var slider = new TrackBar
+        var readout = SettingLabel(value + unit);
+        readout.TextAlign = ContentAlignment.MiddleRight;
+        readout.ForeColor = Secondary;
+        var slider = new GlassTrackBar
         {
             AccessibleName = label,
             Name = label,
-            BackColor = Surface,
+            BackColor = CanvasKey,
+            ForeColor = Foreground,
+            RailColor = Rule,
+            TrackColor = AccentInk,
             Minimum = min,
             Maximum = max,
             Value = Math.Clamp(value, min, max),
@@ -199,33 +247,71 @@ internal sealed partial class LearningWindow
         };
         slider.ValueChanged += (_, _) =>
         {
-            readout.Text = label + " " + slider.Value + unit;
+            readout.Text = slider.Value + unit;
             change(slider.Value);
         };
-        AddContent(slider);
+        var group = new Panel { BackColor = CanvasKey, Height = Dip(33) };
+        void PlaceRange()
+        {
+            int readoutWidth = Dip(38);
+            readout.SetBounds(Math.Max(1, group.Width - readoutWidth), 0, readoutWidth, group.Height);
+            slider.SetBounds(0, (group.Height - slider.Height) / 2, Math.Max(1, readout.Left - Dip(5)), slider.Height);
+        }
+        group.Controls.Add(slider);
+        group.Controls.Add(readout);
+        group.Resize += (_, _) => PlaceRange();
+        SettingRow(SettingLabel(label), group, 163);
+        PlaceRange();
     }
 
     private void AccentSetting()
     {
         var field = Input("强调色十六进制", prefs.Look.Accent.ToUpperInvariant());
         field.MaxLength = 7;
+        field.BorderStyle = BorderStyle.FixedSingle;
+        var swatch = new GlassButton
+        {
+            AccessibleName = "选择强调色",
+            Name = "AccentSwatch",
+            BackColor = Accent,
+            BorderColor = Rule,
+            CornerRadius = Dip(5),
+            Size = new Size(Dip(35), Dip(29)),
+            TabStop = true,
+        };
         field.TextChanged += (_, _) =>
         {
             if (Regex.IsMatch(field.Text, "^#[a-fA-F0-9]{6}$"))
+            {
                 PreviewLook(prefs.Look with { Accent = field.Text.ToLowerInvariant() });
+                swatch.BackColor = Accent;
+            }
         };
-        AddContent(ActionButton("选择强调色", () =>
+        field.Leave += (_, _) =>
         {
-            using var chooser = new ColorDialog { FullOpen = true, Color = Accent };
-            if (chooser.ShowDialog(this) == DialogResult.OK)
-                field.Text = $"#{chooser.Color.R:X2}{chooser.Color.G:X2}{chooser.Color.B:X2}";
-        }, primary: true));
-        AddContent(field);
+            if (!Regex.IsMatch(field.Text, "^#[a-fA-F0-9]{6}$")) field.Text = prefs.Look.Accent.ToUpperInvariant();
+        };
+        swatch.Click += (_, _) => AccentPicker.Show(swatch, Accent, Surface, Foreground, color =>
+        {
+            if (!field.IsDisposed) field.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        });
+        var group = new Panel { Height = Dip(32), BackColor = CanvasKey };
+        void PlaceSwatch()
+        {
+            swatch.Size = new Size(Dip(35), Dip(29));
+            swatch.Location = new Point(0, (group.Height - swatch.Height) / 2);
+            field.SetBounds(swatch.Right + Dip(7), (group.Height - field.Height) / 2,
+                Math.Max(1, group.Width - swatch.Right - Dip(7)), field.Height);
+        }
+        group.Controls.Add(swatch);
+        group.Controls.Add(field);
+        group.Resize += (_, _) => PlaceSwatch();
+        SettingRow(SettingLabel("强调色"), group, 130);
+        PlaceSwatch();
     }
 
     private NumericUpDown GeometryInput(string label, int value, int min, int max, Action<int> change)
     {
-        AddContent(SettingLabel(label));
         var field = new NumericUpDown
         {
             AccessibleName = label,
@@ -233,7 +319,8 @@ internal sealed partial class LearningWindow
             BackColor = Surface, ForeColor = Foreground,
         };
         field.ValueChanged += (_, _) => { if (!previewingBounds) change((int)field.Value); };
-        AddContent(field);
+        SetOwnedFont(field, TextFont(13));
+        SettingRow(SettingLabel(label), field, 76);
         return field;
     }
 
@@ -261,6 +348,16 @@ internal sealed partial class LearningWindow
             UpdateNavigation();
         }
         UpdateAppearanceFeedback();
+        UpdateAccentSliders(body);
+    }
+
+    private void UpdateAccentSliders(Control parent)
+    {
+        foreach (Control control in parent.Controls)
+        {
+            if (control is GlassTrackBar slider) slider.TrackColor = AccentInk;
+            else if (control.HasChildren) UpdateAccentSliders(control);
+        }
     }
 
     private void ScalePageControls(Control.ControlCollection controls, float ratio)
@@ -272,7 +369,7 @@ internal sealed partial class LearningWindow
                 var font = control.Font;
                 SetOwnedFont(control, new Font(font.FontFamily, font.Size * ratio, font.Style, font.Unit));
             }
-            if (control is TrackBar or Button or FlowLayoutPanel or Label { AutoSize: false })
+            if (control is TrackBar or Button or Panel { Height: > 1 } or Label { AutoSize: false })
                 control.Height = Math.Max(1, (int)Math.Round(control.Height * ratio));
             if (control.Controls.Count != 0) ScalePageControls(control.Controls, ratio);
         }
@@ -311,7 +408,11 @@ internal sealed partial class LearningWindow
     {
         bool changed = prefs != saved;
         if (changes is { IsDisposed: false }) changes.Text = changed ? "未保存" : "";
-        if (saveAppearance is { IsDisposed: false }) saveAppearance.Enabled = changed;
+        if (saveAppearance is { IsDisposed: false })
+        {
+            saveAppearance.Enabled = changed;
+            saveAppearance.ForeColor = changed ? AccentInk : Secondary;
+        }
     }
 
     private void ResetAppearance()

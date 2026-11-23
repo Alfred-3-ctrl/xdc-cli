@@ -41,10 +41,30 @@ internal sealed partial class LearningWindow : Form
     public int PageVersion => pageVersion;
     private bool Dark => prefs.Look.Scheme == "dark" ||
         (prefs.Look.Scheme == "system" && !SystemUsesLightTheme());
-    internal Color Surface => Dark ? Color.FromArgb(37, 47, 60) : Color.FromArgb(242, 245, 249);
-    internal Color Foreground => Dark ? Color.FromArgb(244, 247, 251) : Color.FromArgb(25, 34, 46);
-    internal Color Secondary => Dark ? Color.FromArgb(195, 206, 218) : Color.FromArgb(75, 87, 102);
+    internal Color Surface => Dark ? Color.FromArgb(39, 40, 43) : Color.FromArgb(253, 253, 254);
+    internal Color Foreground => Dark ? Color.FromArgb(242, 242, 244) : Color.FromArgb(35, 36, 38);
+    internal Color Secondary => Mix(
+        Dark ? Color.FromArgb(170, 170, 177) : Color.FromArgb(101, 103, 108),
+        Dark ? Color.FromArgb(199, 207, 221) : Color.FromArgb(57, 60, 67),
+        Math.Clamp((prefs.Look.Transparency - 30) / 65d, 0, 1));
     internal Color Accent => ColorTranslator.FromHtml(prefs.Look.Accent);
+    private Color Sheet => Dark ? Color.FromArgb(32, 33, 36) : Color.FromArgb(247, 247, 248);
+    private Color Chrome => Dark ? Color.FromArgb(69, 71, 80) : Color.FromArgb(248, 249, 251);
+    private Color Rule => Dark ? Color.FromArgb(104, 108, 119) : Color.FromArgb(205, 208, 214);
+    private Color AccentInk
+    {
+        get
+        {
+            var baseTone = Luminance(Sheet);
+            for (int step = 0; step <= 10; step++)
+            {
+                var tone = Mix(Accent, Foreground, step / 10d);
+                double ink = Luminance(tone);
+                if ((Math.Max(baseTone, ink) + .05) / (Math.Min(baseTone, ink) + .05) >= 4.5) return tone;
+            }
+            return Foreground;
+        }
+    }
 
     public LearningWindow(NativeOptions options)
     {
@@ -66,6 +86,7 @@ internal sealed partial class LearningWindow : Form
         Controls.Add(dock);
         Controls.Add(status);
         status.BringToFront();
+        dock.Paint += (_, e) => PaintDockOutline(e.Graphics);
         header.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) BeginDrag(); };
         lifecycle.LayoutToggleRequested += ToggleLayout;
         lifecycle.LayoutEnvironmentChanged += RestorePlacement;
@@ -146,9 +167,8 @@ internal sealed partial class LearningWindow : Form
     private void ApplyGlass()
     {
         if (glass is null) return;
-        var rgb = Dark ? Color.FromArgb(22, 31, 46) : Color.FromArgb(227, 236, 249);
         int alpha = (int)Math.Round((100 - prefs.Look.Transparency) * 2.55);
-        glass.SetTint(Color.FromArgb(Math.Clamp(alpha, 0, 255), rgb));
+        glass.SetTint(Color.FromArgb(Math.Clamp(alpha, 0, 255), Sheet));
         glass.SetRadius(prefs.Look.Radius);
     }
 
@@ -305,22 +325,39 @@ internal sealed partial class LearningWindow : Form
         inLayout = true;
         try
         {
-            int margin = Dip(18);
-            header.SetBounds(margin, Dip(13), Math.Max(1, ClientSize.Width - 2 * margin), Dip(38));
-            int top = header.Bottom + Dip(9);
-            const int navigationCount = 3;
-            int dockWidth = Math.Min(ClientSize.Width - 2 * margin, Dip(prefs.Look.NavStyle == "icons" ? 48 : 90) * navigationCount);
+            int margin = Dip(15);
+            int gutter = Math.Clamp((int)Math.Round(ClientSize.Width * .06), Dip(20), Dip(29));
+            header.SetBounds(margin, Dip(11), Math.Max(1, ClientSize.Width - 2 * margin), Dip(36));
+            int top = Dip(58);
+            int dockPadding = Dip(4);
+            int dockHeight = Dip(38) + 2 * dockPadding;
+            dock.Padding = new Padding(dockPadding);
+            var tools = dock.Controls.Cast<Control>().ToArray();
+            int[] desiredWidths = tools.Select(item =>
+                Math.Max(Dip(38), TextRenderer.MeasureText(item.Text, item.Font).Width + 2 * Dip(11))).ToArray();
+            int itemSpace = Math.Max(1, ClientSize.Width - 2 * margin - 2 * dockPadding - tools.Length * Dip(2));
+            int itemsWidth = desiredWidths.Sum();
+            int dockWidth = Math.Min(itemsWidth, itemSpace) + 2 * dockPadding + tools.Length * Dip(2);
             int dockX = prefs.Look.NavAlign switch
             {
                 "left" => margin,
                 "right" => ClientSize.Width - dockWidth - margin,
                 _ => (ClientSize.Width - dockWidth) / 2,
             };
-            dock.SetBounds(dockX, Math.Max(top, ClientSize.Height - Dip(57)), dockWidth, Dip(44));
-            status.SetBounds(margin, Math.Max(top, dock.Top - Dip(32)), ClientSize.Width - 2 * margin, Dip(31));
-            body.SetBounds(margin, top, ClientSize.Width - 2 * margin, Math.Max(1, dock.Top - top - Dip(8)));
+            var dockBounds = new Rectangle(dockX, Math.Max(top, ClientSize.Height - dockHeight - Dip(13)), dockWidth, dockHeight);
+            if (dock.Bounds.Size != dockBounds.Size || dock.Region is null)
+            {
+                using var outline = CapsulePath(new(0, 0, dockWidth, dockHeight), dockHeight / 2);
+                var previous = dock.Region;
+                dock.Region = new Region(outline);
+                previous?.Dispose();
+            }
+            dock.Bounds = dockBounds;
+            status.SetBounds(gutter, Math.Max(top, dock.Top - Dip(32)), ClientSize.Width - 2 * gutter, Dip(31));
+            body.SetBounds(gutter, top, ClientSize.Width - 2 * gutter, Math.Max(1, dock.Top - top - Dip(12)));
             foreach (var item in wide) item.Width = ContentWidth;
-            foreach (Control item in dock.Controls) item.Width = Math.Max(1, dock.ClientSize.Width / navigationCount);
+            for (int i = 0; i < tools.Length; i++)
+                tools[i].Width = itemsWidth <= itemSpace ? desiredWidths[i] : Math.Max(1, desiredWidths[i] * itemSpace / itemsWidth);
             if (header.Controls.Count > 0) header.Controls[^1].Left = header.ClientSize.Width - header.Controls[^1].Width;
         }
         finally { inLayout = false; }
@@ -332,34 +369,30 @@ internal sealed partial class LearningWindow : Form
     {
         ClearControls(header);
         ClearControls(dock);
-        var back = ActionButton("‹", () => _ = GoBack());
+        dock.BackColor = Chrome;
+        var back = ToolButton("‹", () => _ = GoBack());
         back.AccessibleName = "返回";
         back.Visible = history.Count != 0;
         back.Location = Point.Empty;
-        back.Width = Dip(39);
         header.Controls.Add(back);
-        var settings = ActionButton("⚙", () => _ = OpenSettings());
+        var settings = ToolButton("⚙", () => _ = OpenSettings());
         settings.AccessibleName = "设置";
-        settings.Width = Dip(38);
-        var refresh = ActionButton("↻", () => _ = Run(RefreshPage));
+        var refresh = ToolButton("↻", () => _ = Run(RefreshPage));
         refresh.AccessibleName = "刷新";
-        refresh.Width = Dip(36);
         refresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         refresh.Left = Math.Max(0, header.ClientSize.Width - Dip(80));
         refresh.Visible = route.TryGetValue("name", out var screen) && screen is not ("settings" or "appearance" or "session");
         header.Controls.Add(refresh);
         if (!prefs.Locked)
         {
-            var drag = ActionButton("⠿", () => { });
+            var drag = ToolButton("⠿", () => { });
             drag.AccessibleName = "拖动组件";
-            drag.Width = Dip(35);
             drag.Location = new Point(Dip(44), 0);
             drag.Cursor = Cursors.SizeAll;
             drag.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) BeginDrag(); };
             header.Controls.Add(drag);
-            var grip = ActionButton("↘", () => { });
+            var grip = ToolButton("↘", () => { });
             grip.AccessibleName = "调整窗口尺寸";
-            grip.Width = Dip(34);
             grip.Location = new Point(Dip(82), 0);
             grip.Cursor = Cursors.SizeNWSE;
             grip.MouseDown += (_, e) =>
@@ -391,13 +424,63 @@ internal sealed partial class LearningWindow : Form
     private void AddDock(string icon, string text, string name, Func<Task> action)
     {
         string label = prefs.Look.NavStyle switch { "icons" => icon, "text" => text, _ => icon + " " + text };
-        var button = ActionButton(label, () => _ = NavigateDock(action),
-            route.TryGetValue("name", out var view) && view == name);
-        button.Text = label;
+        bool selected = route.TryGetValue("name", out var view) && view == name;
+        var button = (GlassButton)ActionButton(label, () => _ = NavigateDock(action));
+        button.CanvasColor = Chrome;
+        button.BackColor = selected ? Mix(Chrome, Accent, .22) : Chrome;
+        button.HoverColor = selected ? button.BackColor : Mix(Chrome, Foreground, .08);
+        button.ForeColor = Foreground;
         button.AccessibleName = text;
-        button.Margin = Padding.Empty;
-        button.Height = Dip(37);
+        button.Margin = new Padding(Dip(1), 0, Dip(1), 0);
+        button.Height = Dip(38);
+        button.CornerRadius = button.Height / 2;
+        SetOwnedFont(button, TextFont(13, selected ? FontStyle.Bold : FontStyle.Regular));
         dock.Controls.Add(button);
+    }
+
+    private Button ToolButton(string text, Action click)
+    {
+        var button = (GlassButton)ActionButton(text, click);
+        button.Size = new Size(Dip(36), Dip(36));
+        button.BackColor = Chrome;
+        button.BorderColor = Rule;
+        button.HoverColor = Mix(Chrome, Foreground, .12);
+        button.CornerRadius = button.Height / 2;
+        SetOwnedFont(button, TextFont(text == "‹" ? 23 : 16));
+        return button;
+    }
+
+    private void PaintDockOutline(Graphics graphics)
+    {
+        if (dock.Width < 3 || dock.Height < 3) return;
+        using var border = new Pen(Rule);
+        using var outline = CapsulePath(new(1, 1, dock.Width - 2, dock.Height - 2), dock.Height / 2);
+        graphics.DrawPath(border, outline);
+    }
+
+    private static GraphicsPath CapsulePath(Rectangle rectangle, int radius)
+    {
+        int size = Math.Min(2 * radius, Math.Min(rectangle.Width, rectangle.Height));
+        var path = new GraphicsPath();
+        if (size <= 1) { path.AddRectangle(rectangle); return path; }
+        path.AddArc(rectangle.Left, rectangle.Top, size, size, 180, 90);
+        path.AddArc(rectangle.Right - size, rectangle.Top, size, size, 270, 90);
+        path.AddArc(rectangle.Right - size, rectangle.Bottom - size, size, size, 0, 90);
+        path.AddArc(rectangle.Left, rectangle.Bottom - size, size, size, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+
+    private static Color Mix(Color bottom, Color top, double weight)
+    {
+        int Channel(int from, int to) => (int)Math.Round(from + (to - from) * weight);
+        return Color.FromArgb(Channel(bottom.R, top.R), Channel(bottom.G, top.G), Channel(bottom.B, top.B));
+    }
+
+    private static double Luminance(Color color)
+    {
+        static double Linear(double value) => value <= .04045 ? value / 12.92 : Math.Pow((value + .055) / 1.055, 2.4);
+        return .2126 * Linear(color.R / 255d) + .7152 * Linear(color.G / 255d) + .0722 * Linear(color.B / 255d);
     }
 
     private Task NavigateDock(Func<Task> destination)
@@ -508,8 +591,8 @@ internal sealed partial class LearningWindow : Form
             ClearControls(body);
             wide.Clear();
             body.AutoScrollPosition = Point.Empty;
-            AddLine(title, 23, Foreground, FontStyle.Bold);
-            if (!string.IsNullOrEmpty(subtitle)) AddLine(subtitle, 12, Secondary, FontStyle.Regular);
+            AddLine(title, 29, Foreground, FontStyle.Bold, bottom: string.IsNullOrEmpty(subtitle) ? 26 : 4);
+            if (!string.IsNullOrEmpty(subtitle)) AddLine(subtitle, 13, Secondary, FontStyle.Regular, bottom: 26);
         }
         finally { body.ResumeLayout(); }
         UpdateNavigation();
@@ -517,20 +600,32 @@ internal sealed partial class LearningWindow : Form
 
     internal void Section(string title, string? subtitle = null)
     {
-        AddLine(title, 15, Foreground, FontStyle.Bold, 8);
-        if (!string.IsNullOrWhiteSpace(subtitle)) AddLine(subtitle, 11, Secondary, FontStyle.Regular);
+        if (string.IsNullOrWhiteSpace(subtitle))
+        {
+            AddLine(title, 13, Foreground, FontStyle.Bold, 12);
+            return;
+        }
+        var heading = new Panel { BackColor = CanvasKey, Height = Dip(28), Margin = new Padding(0, Dip(12), 0, 0) };
+        var label = new GlassLabel { Text = title, BackColor = CanvasKey, ForeColor = Foreground, Dock = DockStyle.Left, AutoSize = true };
+        var detail = new GlassLabel { Text = subtitle, BackColor = CanvasKey, ForeColor = Secondary, Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.TopRight, AutoEllipsis = true };
+        SetOwnedFont(label, TextFont(13, FontStyle.Bold));
+        SetOwnedFont(detail, TextFont(12));
+        heading.Controls.Add(detail);
+        heading.Controls.Add(label);
+        AddContent(heading);
     }
 
-    private void AddLine(string text, int size, Color color, FontStyle style, int top = 0)
+    private void AddLine(string text, int size, Color color, FontStyle style, int top = 0, int bottom = 5)
     {
-        var label = new Label
+        var label = new GlassLabel
         {
             Text = text,
             AutoSize = true,
             MaximumSize = new Size(ContentWidth, 0),
             BackColor = CanvasKey,
             ForeColor = color,
-            Margin = new Padding(Dip(4), top == 0 ? 0 : Dip(top), 0, Dip(5)),
+            Margin = new Padding(0, top == 0 ? 0 : Dip(top), 0, Dip(bottom)),
         };
         SetOwnedFont(label, TextFont(size, style));
         body.Controls.Add(label);
@@ -541,7 +636,17 @@ internal sealed partial class LearningWindow : Form
 
     private void SetOwnedFont(Control control, Font font)
     {
-        if (!ownedFonts.TryGetValue(control, out var previous)) control.Disposed += ReleaseControlFont;
+        if (ownedFonts.TryGetValue(control, out var previous))
+        {
+            // WinForms can keep the installed font when the new font has equal properties.
+            if (ReferenceEquals(previous, font)) return;
+            if (previous.Equals(font))
+            {
+                font.Dispose();
+                return;
+            }
+        }
+        else control.Disposed += ReleaseControlFont;
         control.Font = font;
         ownedFonts[control] = font;
         previous?.Dispose();
@@ -554,16 +659,26 @@ internal sealed partial class LearningWindow : Form
 
     internal void Row(string title, string? subtitle = null, Action? onClick = null, string? trail = null)
     {
-        var item = ActionButton(string.IsNullOrEmpty(subtitle) ? title : title + Environment.NewLine + subtitle,
-            onClick ?? (() => { }));
+        if (onClick is null)
+        {
+            AddLine(title, 13, Secondary, FontStyle.Regular, top: 4, bottom: 12);
+            if (!string.IsNullOrEmpty(subtitle)) AddLine(subtitle, 12, Secondary, FontStyle.Regular, bottom: 12);
+            return;
+        }
+        var item = (GlassButton)ActionButton(string.IsNullOrEmpty(subtitle) ? title : title + Environment.NewLine + subtitle,
+            onClick);
+        item.CornerRadius = 0;
+        item.BackColor = Mix(Sheet, Surface, .45);
         item.TextAlign = ContentAlignment.MiddleLeft;
         item.Padding = new Padding(Dip(9), 0, Dip(5), 0);
-        item.Height = Dip(prefs.Look.Density switch { "compact" => 39, "comfortable" => 59, _ => 49 });
+        item.Height = Dip(prefs.Look.Density switch { "compact" => 44, "comfortable" => 66, _ => 54 });
         item.AccessibleName = title;
-        item.Cursor = onClick is null ? Cursors.Default : Cursors.Hand;
+        item.Cursor = Cursors.Hand;
         item.AutoEllipsis = true;
         if (!string.IsNullOrEmpty(trail)) item.Text += "   " + trail;
+        item.Margin = Padding.Empty;
         AddContent(item);
+        AddContent(new Panel { Height = 1, BackColor = Rule, Margin = Padding.Empty });
     }
 
     internal void AddContent(Control control)
@@ -575,12 +690,14 @@ internal sealed partial class LearningWindow : Form
 
     internal Button ActionButton(string text, Action onClick, bool primary = false)
     {
-        Color fill = primary ? Color.FromArgb(255, Accent.R, Accent.G, Accent.B) : Surface;
-        var button = new Button
+        var button = new GlassButton
         {
             Text = text,
-            ForeColor = primary ? (fill.GetBrightness() > .56f ? Color.Black : Color.White) : Foreground,
-            BackColor = fill,
+            ForeColor = primary ? AccentInk : Foreground,
+            BackColor = Surface,
+            HoverColor = Mix(Surface, Foreground, .1),
+            FocusColor = AccentInk,
+            CornerRadius = Dip(8),
             FlatStyle = FlatStyle.Flat,
             UseVisualStyleBackColor = false,
             Height = Dip(34),
@@ -589,23 +706,7 @@ internal sealed partial class LearningWindow : Form
         button.FlatAppearance.BorderSize = 0;
         button.Click += (_, _) => onClick();
         SetOwnedFont(button, TextFont(13));
-        button.Resize += (_, _) => RoundButton(button);
         return button;
-    }
-
-    private void RoundButton(Button button)
-    {
-        if (button.Width < 8 || button.Height < 8 || button.IsDisposed) return;
-        int corner = Math.Min(Dip(12), Math.Min(button.Width, button.Height));
-        using var path = new GraphicsPath();
-        path.AddArc(0, 0, corner, corner, 180, 90);
-        path.AddArc(button.Width - corner, 0, corner, corner, 270, 90);
-        path.AddArc(button.Width - corner, button.Height - corner, corner, corner, 0, 90);
-        path.AddArc(0, button.Height - corner, corner, corner, 90, 90);
-        path.CloseFigure();
-        var previous = button.Region;
-        button.Region = new Region(path);
-        previous?.Dispose();
     }
 
     internal TextBox Input(string accessibleName, string text = "", bool password = false, bool multiline = false)
