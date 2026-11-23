@@ -132,6 +132,25 @@ internal sealed class AccentPicker : Form
         };
         Controls.Add(format);
 
+        var eyedropper = new Button
+        {
+            Text = "吸管",
+            AccessibleName = "屏幕取色",
+            AccessibleDescription = "点击屏幕上的颜色，按 Esc 取消。",
+            Bounds = At(100, 199, 66, 25),
+            ForeColor = foreground,
+            BackColor = fieldSurface,
+            FlatStyle = FlatStyle.Flat,
+            UseVisualStyleBackColor = false,
+        };
+        eyedropper.FlatAppearance.BorderColor = Blend(surface, foreground, 0.26);
+        eyedropper.Click += (_, _) =>
+        {
+            if (ScreenColorPicker.Pick(this) is { } color)
+                Apply(Hsv.FromColor(color, picker.Hue), exact: color);
+        };
+        Controls.Add(eyedropper);
+
         var done = new Button
         {
             Text = "完成",
