@@ -163,6 +163,7 @@
     #xdc-glass .xdc-window { backdrop-filter: none; }
     #xdc-glass :is(.dock,.tool) { background: var(--dialog); backdrop-filter: none; }
   }
+  #xdc-glass[data-blur=false] :is(.xdc-window,.dock,.tool) { backdrop-filter: none; }
 html, body, #xdc-glass { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
 #xdc-glass .window-tools { display: flex; gap: 8px; margin-left: auto; }
 #xdc-glass .window-head { -webkit-app-region: no-drag; }
@@ -200,3 +201,75 @@ html, body, #xdc-glass { width: 100%; height: 100%; margin: 0; overflow: hidden;
 #xdc-glass .tabs { flex-wrap: wrap; row-gap: 2px; }
 #xdc-glass input[type=month] { max-width: 100%; }
 #xdc-glass button[aria-busy=true] { opacity: .65; }
+#xdc-glass .seg {
+  display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+#xdc-glass .seg button {
+  border: 0; background: transparent; padding: 4px 10px; border-radius: 8px;
+  color: var(--muted-ink); white-space: nowrap; cursor: pointer; font-size: .92em;
+}
+#xdc-glass .seg button[aria-pressed=true] {
+  background: var(--dialog); color: var(--ink); font-weight: 600;
+  box-shadow: 0 1px 2px var(--lift);
+}
+#xdc-glass .swatches { display: inline-flex; align-items: center; gap: 6px; }
+#xdc-glass .accent-controls { flex-wrap: wrap; }
+@container (max-width: 340px) {
+  #xdc-glass .seg button { padding-inline: 6px; }
+}
+#xdc-glass .swatch {
+  width: 22px; height: 22px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--rule); flex: none;
+}
+#xdc-glass .swatch[aria-pressed=true] {
+  box-shadow: 0 0 0 2px var(--sheet), 0 0 0 4px var(--ink);
+}
+#xdc-glass .swatch.custom {
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+#xdc-glass .popover-layer {
+  position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none;
+  border: 0; margin: 0; padding: 0; border-radius: var(--window-radius,25px);
+  background: rgba(0,0,0,.18); color: inherit; overflow: auto; -webkit-app-region: no-drag;
+}
+#xdc-glass .popover-layer[open] { display: grid; place-items: safe center; }
+#xdc-glass .popover-layer::backdrop { background: transparent; }
+#xdc-glass .picker {
+  width: min(304px, calc(100% - 28px)); padding: 14px; border-radius: 18px;
+  background: var(--dialog); color: var(--ink); border: 1px solid var(--glass-edge);
+  box-shadow: 0 16px 40px rgba(0,0,0,.32); font-size: .93em;
+}
+#xdc-glass .picker h4 {
+  margin: 0 0 10px; font-size: 1em; display: flex; justify-content: space-between; align-items: center;
+}
+#xdc-glass .picker h4 span { font-size: .84em; font-weight: 400; color: var(--muted-ink); }
+#xdc-glass .sv {
+  position: relative; height: 146px; border-radius: 10px; cursor: crosshair; touch-action: none;
+}
+#xdc-glass .sv::before, #xdc-glass .sv::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+}
+#xdc-glass .sv::before { background: linear-gradient(to right, #fff, transparent); }
+#xdc-glass .sv::after { background: linear-gradient(to top, #000, transparent); }
+#xdc-glass .sv .knob, #xdc-glass .hue .knob {
+  position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.45); z-index: 1; pointer-events: none;
+}
+#xdc-glass .hue {
+  position: relative; height: 14px; border-radius: 7px; margin: 12px 0; cursor: pointer; touch-action: none;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+#xdc-glass .hue .knob { top: 50%; }
+#xdc-glass .nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.4fr); gap: 6px; }
+#xdc-glass .nums label { display: flex; flex-direction: column; gap: 3px; font-size: .84em; color: var(--muted-ink); }
+#xdc-glass .nums input {
+  height: 28px; border: 1px solid var(--rule); border-radius: 7px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent); padding: 0 6px; width: 100%;
+}
+#xdc-glass .picker .error { margin-top: 8px; }
+#xdc-glass .picker-actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+#xdc-glass .picker-actions .grow { flex: 1; }
+#xdc-glass .preview-chip {
+  width: 28px; height: 28px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--rule); flex: none;
+}

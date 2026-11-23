@@ -1,4 +1,4 @@
-import { escapeHtml as e, options, ranges } from './appearance.js';
+import { escapeHtml as e, options, ranges, SWATCHES } from './appearance.js';
 
 const dateFormat = new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -210,9 +210,9 @@ export function settingsView(prefs, auth) {
 }
 
 function selectLook(look, key, label) {
-  return '<label class="setting-row"><span>' + e(label) + '</span><select data-look="' + key + '">' +
-    Object.entries(options[key]).map(([value, text]) => '<option value="' + value + '"' +
-      (look[key] === value ? ' selected' : '') + '>' + e(text) + '</option>').join('') + '</select></label>';
+  return '<div class="setting-row"><span>' + e(label) + '</span><div class="seg" role="group" aria-label="' + e(label) + '">' +
+    Object.entries(options[key]).map(([value, text]) => '<button type="button" data-look-choice="' + key + ':' + value +
+      '" aria-pressed="' + (String(look[key]) === value) + '">' + e(text) + '</button>').join('') + '</div></div>';
 }
 
 function rangeLook(look, key, label, unit = '') {
@@ -227,12 +227,17 @@ export function appearanceView(prefs, tab, canSave) {
   const look = prefs.look;
   const geometry = prefs.geometry;
   const head = hero('外观与布局') + tabs({ look: '外观', layout: '布局' }, tab, 'settings-tab');
+  const swatches = SWATCHES.map(color =>
+    '<button type="button" class="swatch" data-swatch="' + color + '" data-action="swatch:' + color +
+    '" aria-label="强调色 ' + color.toUpperCase() + '" aria-pressed="' + (look.accent.toLowerCase() === color) + '"></button>'
+  ).join('') + '<button type="button" class="swatch custom" data-action="open-picker" aria-haspopup="dialog" aria-label="自定义强调色" aria-pressed="' +
+    (!SWATCHES.includes(look.accent.toLowerCase())) + '"></button>';
   const controls = tab === 'look' ?
-    selectLook(look, 'scheme', '主题') + '<div class="setting-row"><label for="xdc-accent">强调色</label>' +
-    '<span class="setting-control"><input id="xdc-accent" type="color" data-look="accent" value="' + e(look.accent) + '">' +
-    '<input class="compact-input" aria-label="强调色十六进制" type="text" maxlength="7" spellcheck="false" data-hex value="' +
+    selectLook(look, 'scheme', '主题') + '<div class="setting-row"><label for="xdc-accent-hex">强调色</label>' +
+    '<span class="setting-control accent-controls"><span class="swatches" role="group" aria-label="强调色预设">' + swatches + '</span>' +
+    '<input id="xdc-accent-hex" class="compact-input" aria-label="强调色十六进制" type="text" maxlength="7" spellcheck="false" data-hex value="' +
     e(look.accent.toUpperCase()) + '"></span></div>' + rangeLook(look, 'transparency', '玻璃透明度', '%') +
-    rangeLook(look, 'scale', '界面缩放', '%') :
+    selectLook(look, 'blur', '玻璃效果') + rangeLook(look, 'scale', '界面缩放', '%') :
     '<div class="setting-row"><span data-dimensions>' + e(geometry.width + ' × ' + geometry.height) + '</span>' +
     button(prefs.locked ? '解锁布局' : '锁定布局', 'lock') + '</div>' +
     (prefs.locked ? '' : '<label class="setting-row">宽度 <input type="number" min="320" max="620" data-geometry="width" value="' +

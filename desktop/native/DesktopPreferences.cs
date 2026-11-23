@@ -14,6 +14,7 @@ internal sealed record DesktopLook
     public string NavStyle { get; init; } = "both";
     public string NavAlign { get; init; } = "center";
     public int Radius { get; init; } = 30;
+    public bool Blur { get; init; } = true;
 
     public DesktopLook Normalize() => this with
     {
@@ -25,7 +26,7 @@ internal sealed record DesktopLook
         Density = Density is "compact" or "regular" or "comfortable" ? Density : Default.Density,
         NavStyle = NavStyle is "both" or "text" or "icons" ? NavStyle : Default.NavStyle,
         NavAlign = NavAlign is "left" or "center" or "right" ? NavAlign : Default.NavAlign,
-        Radius = Math.Clamp(Radius, 16, 36)
+        Radius = Math.Clamp(Radius, 16, 36),
     };
 }
 
@@ -63,7 +64,8 @@ internal sealed record DesktopPreferences
                 Density = Text(appearance, "density", defaults.Look.Density),
                 NavStyle = Text(appearance, "navStyle", defaults.Look.NavStyle),
                 NavAlign = Text(appearance, "navAlign", defaults.Look.NavAlign),
-                Radius = Number(appearance, "radius", defaults.Look.Radius)
+                Radius = Number(appearance, "radius", defaults.Look.Radius),
+                Blur = !TryField(appearance, "blur", out var blur) || blur.ValueKind != JsonValueKind.False,
             };
             var geometry = new DesktopGeometry(
                 Number(bounds, "x", defaults.Geometry.X),

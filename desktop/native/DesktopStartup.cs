@@ -17,11 +17,13 @@ internal static class DesktopStartup
 
     public static void Install(string executable, string args, string cwd, bool enableStartup)
     {
+        string startup = StartupPath();
+        if (!enableStartup) SetLink(startup, false, executable, args, cwd);
+
         string programs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), LinkName);
         SetLink(programs, true, executable, args, cwd);
         if (enableStartup)
         {
-            string startup = StartupPath();
             // Keep Windows' approval for an existing link. Also preserve a
             // previously disabled legacy login item if no link was created yet.
             if (File.Exists(startup) || !WindowsDisabled())
@@ -45,7 +47,10 @@ internal static class DesktopStartup
         {
             var previous = ReadLink(path);
             if (!string.Equals(previous.Identity, AppId, StringComparison.Ordinal))
+            {
+                if (!enabled) return;
                 throw new IOException("同名的启动快捷方式已被其他应用使用。");
+            }
             if (!enabled)
             {
                 File.Delete(path);

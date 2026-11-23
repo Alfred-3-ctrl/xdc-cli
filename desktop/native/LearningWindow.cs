@@ -88,6 +88,11 @@ internal sealed partial class LearningWindow : Form
         Controls.Add(dock);
         Controls.Add(status);
         status.BringToFront();
+        body.Layout += (_, _) => QueueContentText();
+        body.Scroll += (_, _) => QueueContentText();
+        body.MouseWheel += (_, _) => QueueContentText();
+        body.Paint += (_, _) => QueueContentText();
+        status.VisibleChanged += (_, _) => QueueContentText();
         dock.Paint += (_, e) => PaintDockOutline(e.Graphics);
         header.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) BeginDrag(); };
         lifecycle.LayoutToggleRequested += ToggleLayout;
@@ -123,7 +128,7 @@ internal sealed partial class LearningWindow : Form
         lifecycle.Start();
         if (!lifecycle.ApplyShortcut(prefs.Shortcut)) Notice("布局快捷键已被占用");
         EnsureGlass();
-        if (options.Managed && glass is not null)
+        if (options.Managed)
         {
             try { DesktopStartup.Install(Environment.ProcessPath!, LaunchArguments(), options.Desktop, saved.Startup); }
             catch (Exception error) { Notice("无法更新 Windows 启动入口：" + error.Message); }
@@ -153,6 +158,7 @@ internal sealed partial class LearningWindow : Form
         if (closing || quiet || !Visible || !IsHandleCreated || glass is not null) return;
         glass = new GlassWindow(0, passive: true, shared: composition);
         glassContentInput = new GlassContentInput(glass.Handle, content);
+        StartContentText();
         lifecycle.SetBackdrop(glass.Handle);
         ApplyGlass();
         AlignGlass();
@@ -165,12 +171,14 @@ internal sealed partial class LearningWindow : Form
         var bounds = Visible && !quiet && WindowState != FormWindowState.Minimized
             ? RectangleToScreen(ClientRectangle) : Rectangle.Empty;
         glass.PlaceBehind(bounds, bounds.IsEmpty ? 0 : Handle);
+        AlignContentText();
     }
 
     private void ApplyGlass()
     {
         if (glass is null) return;
         int alpha = (int)Math.Round((100 - prefs.Look.Transparency) * 2.55);
+        glass.SetBlurEnabled(prefs.Look.Blur);
         glass.SetTint(Color.FromArgb(Math.Clamp(alpha, 0, 255), Sheet));
         glass.SetRadius(prefs.Look.Radius);
     }
@@ -180,6 +188,7 @@ internal sealed partial class LearningWindow : Form
         lifecycle.SetBackdrop(0);
         glassContentInput?.Dispose();
         glassContentInput = null;
+        ReleaseContentText();
         glass?.Dispose();
         glass = null;
     }
@@ -671,17 +680,18 @@ internal sealed partial class LearningWindow : Form
             if (!string.IsNullOrEmpty(subtitle)) AddLine(subtitle, 12, Secondary, FontStyle.Regular, bottom: 12);
             return;
         }
-        var item = (GlassButton)ActionButton(string.IsNullOrEmpty(subtitle) ? title : title + Environment.NewLine + subtitle,
-            onClick);
+        var item = new GlassListRow(title, subtitle, trail, Secondary)
+        {
+            UseGlassBackground = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(Dip(9), 0, Dip(5), 0),
+            AccessibleName = title,
+            Cursor = Cursors.Hand,
+            AutoEllipsis = true,
+        };
+        ConfigureActionButton(item, onClick, primary: false);
         item.CornerRadius = 0;
-        item.UseGlassBackground = true;
-        item.TextAlign = ContentAlignment.MiddleLeft;
-        item.Padding = new Padding(Dip(9), 0, Dip(5), 0);
         item.Height = Dip(prefs.Look.Density switch { "compact" => 44, "comfortable" => 66, _ => 54 });
-        item.AccessibleName = title;
-        item.Cursor = Cursors.Hand;
-        item.AutoEllipsis = true;
-        if (!string.IsNullOrEmpty(trail)) item.Text += "   " + trail;
         item.Margin = Padding.Empty;
         AddContent(item);
         AddContent(new Panel { Height = 1, BackColor = Rule, Margin = Padding.Empty });
@@ -696,23 +706,25 @@ internal sealed partial class LearningWindow : Form
 
     internal Button ActionButton(string text, Action onClick, bool primary = false)
     {
-        var button = new GlassButton
-        {
-            Text = text,
-            ForeColor = primary ? AccentInk : Foreground,
-            BackColor = Surface,
-            HoverColor = Mix(Surface, Foreground, .1),
-            FocusColor = AccentInk,
-            CornerRadius = Dip(8),
-            FlatStyle = FlatStyle.Flat,
-            UseVisualStyleBackColor = false,
-            Height = Dip(34),
-            Margin = new Padding(0, 0, 0, Dip(4)),
-        };
+        var button = new GlassButton { Text = text };
+        ConfigureActionButton(button, onClick, primary);
+        return button;
+    }
+
+    private void ConfigureActionButton(GlassButton button, Action onClick, bool primary)
+    {
+        button.ForeColor = primary ? AccentInk : Foreground;
+        button.BackColor = Surface;
+        button.HoverColor = Mix(Surface, Foreground, .1);
+        button.FocusColor = AccentInk;
+        button.CornerRadius = Dip(8);
+        button.FlatStyle = FlatStyle.Flat;
+        button.UseVisualStyleBackColor = false;
+        button.Height = Dip(34);
+        button.Margin = new Padding(0, 0, 0, Dip(4));
         button.FlatAppearance.BorderSize = 0;
         button.Click += (_, _) => onClick();
         SetOwnedFont(button, TextFont(13));
-        return button;
     }
 
     internal TextBox Input(string accessibleName, string text = "", bool password = false, bool multiline = false)
@@ -774,6 +786,7 @@ internal sealed partial class LearningWindow : Form
                 pid = Environment.ProcessId,
                 windowHandle = Handle.ToInt64(),
                 glassHandle = glass?.Handle.ToInt64(),
+                textHandle = contentTextLayer?.Handle.ToInt64(),
                 servicePid = service.ProcessId,
                 radius = prefs.Look.Radius,
                 status = load?.ToString(),

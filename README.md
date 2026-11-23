@@ -23,6 +23,11 @@ npm --prefix desktop start
 
 保留的 Electron 桌面可通过 `npm --prefix desktop run start:electron` 启动。其玻璃助手仍用 `npm --prefix desktop run build:native-glass` 构建，参见 [原生玻璃原型](prototypes/native-glass/README.md)。同一个日常配置应由一个桌面版本使用。
 
+已有原生开始菜单或登录启动入口时，Electron 保留其目标。校验或签署暂存的原生程序可使用 [`scripts/sign-native.ps1`](scripts/sign-native.ps1)。当前原生主线和候选技术路线的验收范围见 [复核报告](docs/windows-desktop-handoff.md)。
+
+- 网页评审使用模拟课程。运行 `node prototypes/ui-review/serve.mjs` 后在本机浏览器打开 `http://127.0.0.1:5179/`。
+- 单 HWND、D3D11 和 Composition 的研究代码见[单窗口实验](prototypes/single-hwnd-composition/README.md)。
+
 - 命令：**`xdc`**（别名 `xzzd`）
 - 认证：浙大统一身份认证（CAS + Keycloak）
 - 依赖：Node ≥ 20.3，智云课件通过 `pdf-lib` 合成 PDF

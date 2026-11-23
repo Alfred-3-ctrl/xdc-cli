@@ -21,12 +21,16 @@ internal sealed class GlassLabel : Label
             return;
         }
 
-        GlassControlPainting.DrawText(e.Graphics, Text, Font, ForeColor, ClientRectangle,
-            Padding, TextAlign, AutoEllipsis, keyed: true, RightToLeft == RightToLeft.Yes);
+        if (FindForm() is not LearningWindow window || !window.DeferContentText(this))
+            PaintText(e.Graphics, ClientRectangle, keyed: true);
     }
+
+    internal void PaintText(Graphics graphics, Rectangle bounds, bool keyed) =>
+        GlassControlPainting.DrawText(graphics, Text, Font, ForeColor, bounds,
+            Padding, TextAlign, AutoEllipsis, keyed, RightToLeft == RightToLeft.Yes);
 }
 
-internal sealed class GlassButton : Button
+internal class GlassButton : Button
 {
     private bool hovered;
     private bool mousePressed;
@@ -77,7 +81,6 @@ internal sealed class GlassButton : Button
             using var brush = new SolidBrush(GlassControlPainting.VisibleColor(fill));
             e.Graphics.FillPath(brush, shape);
         }
-
         var outline = Focused && ShowFocusCues && !FocusColor.IsEmpty ? FocusColor : BorderColor;
         if (!outline.IsEmpty)
         {
@@ -85,12 +88,36 @@ internal sealed class GlassButton : Button
             e.Graphics.DrawPath(pen, shape);
         }
 
-        Color ink = Enabled ? ForeColor : ControlPaint.Dark(ForeColor, 0.24f);
+        if (UseGlassBackground && FindForm() is LearningWindow window && window.DeferContentText(this)) return;
         var state = e.Graphics.Save();
         e.Graphics.SetClip(shape, CombineMode.Intersect);
-        GlassControlPainting.DrawText(e.Graphics, Text, Font, ink, ClientRectangle,
-            Padding, TextAlign, AutoEllipsis, keyedCanvas, RightToLeft == RightToLeft.Yes);
+        PaintText(e.Graphics, ClientRectangle, keyedCanvas);
         e.Graphics.Restore(state);
+    }
+
+    internal virtual void PaintText(Graphics graphics, Rectangle bounds, bool keyed)
+    {
+        Color ink = Enabled ? ForeColor : ControlPaint.Dark(ForeColor, 0.24f);
+        GlassControlPainting.DrawText(graphics, Text, Font, ink, bounds,
+            Padding, TextAlign, AutoEllipsis, keyed, RightToLeft == RightToLeft.Yes);
+    }
+
+    internal void PaintGlassHighlight(Graphics graphics, Rectangle bounds)
+    {
+        if (!Enabled) return;
+        int alpha = mousePressed || keyPressed ? 36 : hovered ? 20 : 0;
+        if (alpha == 0) return;
+
+        using var brush = new SolidBrush(Color.FromArgb(alpha, ForeColor));
+        using var shape = GlassControlPainting.RoundedPath(bounds, CornerRadius);
+        graphics.FillPath(brush, shape);
+    }
+
+    internal void SetGlassHover(bool value)
+    {
+        if (hovered == value) return;
+        hovered = value;
+        Invalidate();
     }
 
     protected override void WndProc(ref Message message)
@@ -113,6 +140,7 @@ internal sealed class GlassButton : Button
                     Focus();
                     Capture = true;
                     mousePressed = true;
+                    Invalidate();
                 }
                 return;
             case 0x0202: // WM_LBUTTONUP
@@ -121,6 +149,7 @@ internal sealed class GlassButton : Button
                     (Parent is null || Parent.ClientRectangle.Contains(Parent.PointToClient(PointToScreen(cursor))));
                 mousePressed = false;
                 Capture = false;
+                Invalidate();
                 if (clicked) PerformClick();
                 return;
             default:
@@ -131,21 +160,24 @@ internal sealed class GlassButton : Button
 
     protected override void OnMouseCaptureChanged(EventArgs e)
     {
-        if (UseGlassBackground && !Capture) mousePressed = false;
+        if (UseGlassBackground && !Capture && mousePressed)
+        {
+            mousePressed = false;
+            Invalidate();
+        }
         base.OnMouseCaptureChanged(e);
     }
 
     protected override void OnMouseEnter(EventArgs e)
     {
         base.OnMouseEnter(e);
-        hovered = true;
-        Invalidate();
+        SetGlassHover(true);
     }
 
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
-        hovered = false;
+        SetGlassHover(false);
         if (!UseGlassBackground || !Capture) mousePressed = false;
         Invalidate();
     }

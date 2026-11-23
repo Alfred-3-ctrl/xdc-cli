@@ -112,6 +112,8 @@ internal sealed partial class LearningWindow
             AccentSetting();
             Range("玻璃透明度", 0, 95, prefs.Look.Transparency, "%", value =>
                 PreviewLook(prefs.Look with { Transparency = value }));
+            Choice("玻璃效果", prefs.Look.Blur ? "blur" : "tint", [("blur", "实时模糊"), ("tint", "纯透明（降级）")],
+                value => PreviewLook(prefs.Look with { Blur = value == "blur" }));
             Range("界面缩放", 85, 125, prefs.Look.Scale, "%", value =>
                 PreviewLook(prefs.Look with { Scale = value }));
         }
@@ -188,15 +190,20 @@ internal sealed partial class LearningWindow
         return label;
     }
 
-    private void SettingRow(Label title, Control control, int logicalWidth)
+    private void SettingRow(Label title, Control control, int logicalWidth, bool stackWhenNarrow = false)
     {
         var row = new Panel { Height = Dip(49), BackColor = CanvasKey, Margin = Padding.Empty };
         var divider = new Panel { BackColor = Rule };
         void PlaceControls()
         {
-            int width = Math.Min(Dip(logicalWidth), Math.Max(1, row.ClientSize.Width - Dip(80)));
-            control.SetBounds(row.ClientSize.Width - width, (row.ClientSize.Height - control.Height) / 2, width, control.Height);
-            title.SetBounds(0, 0, Math.Max(1, control.Left - Dip(9)), row.ClientSize.Height - 1);
+            int available = Math.Max(1, row.ClientSize.Width - Dip(80));
+            bool stacked = stackWhenNarrow && available < Dip(logicalWidth);
+            if (stackWhenNarrow) row.Height = Dip(stacked ? 66 : 49);
+            int width = Math.Min(Dip(logicalWidth), stacked ? row.ClientSize.Width : available);
+            int top = stacked ? Dip(28) : (row.ClientSize.Height - control.Height) / 2;
+            control.SetBounds(row.ClientSize.Width - width, top, width, control.Height);
+            title.SetBounds(0, 0, stacked ? row.ClientSize.Width : Math.Max(1, control.Left - Dip(9)),
+                stacked ? top : row.ClientSize.Height - 1);
             divider.SetBounds(0, row.ClientSize.Height - 1, row.ClientSize.Width, 1);
         }
         row.Controls.Add(title);
@@ -264,6 +271,9 @@ internal sealed partial class LearningWindow
         PlaceRange();
     }
 
+    private static readonly string[] PresetAccents =
+        ["#0a5152", "#245dd1", "#7a4fd6", "#c2410c", "#be185d", "#3f6212", "#57534e"];
+
     private void AccentSetting()
     {
         var field = Input("强调色十六进制", prefs.Look.Accent.ToUpperInvariant());
@@ -279,12 +289,23 @@ internal sealed partial class LearningWindow
             Size = new Size(Dip(35), Dip(29)),
             TabStop = true,
         };
+        var presetButtons = new List<(string Hex, GlassButton Button)>();
+        void SyncPresetBorders()
+        {
+            string current = prefs.Look.Accent.ToLowerInvariant();
+            foreach (var (hex, btn) in presetButtons)
+            {
+                btn.BorderColor = current == hex ? Foreground : Rule;
+                btn.Invalidate();
+            }
+        }
         field.TextChanged += (_, _) =>
         {
             if (Regex.IsMatch(field.Text, "^#[a-fA-F0-9]{6}$"))
             {
                 PreviewLook(prefs.Look with { Accent = field.Text.ToLowerInvariant() });
                 swatch.BackColor = Accent;
+                SyncPresetBorders();
             }
         };
         field.Leave += (_, _) =>
@@ -295,18 +316,52 @@ internal sealed partial class LearningWindow
         {
             if (!field.IsDisposed) field.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
         });
+        foreach (string hex in PresetAccents)
+        {
+            var presetColor = ColorTranslator.FromHtml(hex);
+            var preset = new GlassButton
+            {
+                AccessibleName = "预设强调色 " + hex.ToUpperInvariant(),
+                BackColor = presetColor,
+                BorderColor = Rule,
+                CornerRadius = Dip(9),
+                Size = new Size(Dip(18), Dip(18)),
+                TabStop = true,
+            };
+            preset.Click += (_, _) =>
+            {
+                if (!field.IsDisposed) field.Text = hex.ToUpperInvariant();
+            };
+            presetButtons.Add((hex, preset));
+        }
+        SyncPresetBorders();
         var group = new Panel { Height = Dip(32), BackColor = CanvasKey };
         void PlaceSwatch()
         {
-            swatch.Size = new Size(Dip(35), Dip(29));
-            swatch.Location = new Point(0, (group.Height - swatch.Height) / 2);
-            field.SetBounds(swatch.Right + Dip(7), (group.Height - field.Height) / 2,
-                Math.Max(1, group.Width - swatch.Right - Dip(7)), field.Height);
+            int x = 0;
+            int dotGap = Dip(3);
+            int fieldWidth = Dip(79);
+            int swatchWidth = Dip(28);
+            int remaining = group.Width - fieldWidth - swatchWidth - Dip(8) - presetButtons.Count * dotGap;
+            int dotSize = Math.Clamp(remaining / presetButtons.Count, 1, Dip(18));
+            foreach (var (_, btn) in presetButtons)
+            {
+                btn.Size = new Size(dotSize, dotSize);
+                btn.CornerRadius = dotSize / 2;
+                btn.Location = new Point(x, (group.Height - dotSize) / 2);
+                x += dotSize + dotGap;
+            }
+            x += Dip(2);
+            swatch.Size = new Size(swatchWidth, Dip(26));
+            swatch.Location = new Point(x, (group.Height - swatch.Height) / 2);
+            field.SetBounds(swatch.Right + Dip(6), (group.Height - field.Height) / 2,
+                Math.Max(1, group.Width - swatch.Right - Dip(6)), field.Height);
         }
+        foreach (var (_, btn) in presetButtons) group.Controls.Add(btn);
         group.Controls.Add(swatch);
         group.Controls.Add(field);
         group.Resize += (_, _) => PlaceSwatch();
-        SettingRow(SettingLabel("强调色"), group, 130);
+        SettingRow(SettingLabel("强调色"), group, 260, stackWhenNarrow: true);
         PlaceSwatch();
     }
 

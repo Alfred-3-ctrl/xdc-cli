@@ -3,7 +3,7 @@ import path from 'node:path';
 
 export const DEFAULT_LOOK = Object.freeze({
   scheme: 'dark', accent: '#0a5152', transparency: 74, scale: 92,
-  density: 'regular', navStyle: 'both', navAlign: 'center', radius: 30,
+  density: 'regular', navStyle: 'both', navAlign: 'center', radius: 30, blur: true,
 });
 
 const pick = (value, choices, fallback) => choices.includes(value) ? value : fallback;
@@ -21,6 +21,7 @@ export function normalizeLook(input = {}, fallback = DEFAULT_LOOK) {
     navStyle: pick(input?.navStyle, ['both', 'text', 'icons'], fallback.navStyle),
     navAlign: pick(input?.navAlign, ['left', 'center', 'right'], fallback.navAlign),
     radius: integer(input?.radius, 16, 36, fallback.radius),
+    blur: typeof input?.blur === 'boolean' ? input.blur : fallback.blur ?? DEFAULT_LOOK.blur,
   };
 }
 

@@ -6,10 +6,21 @@ export function createWindowsLaunchEntries({ app, shell, appId, appDirectory, ex
   const startMenu = path.join(programs, '学习桌面.lnk');
   const startup = path.join(programs, 'Startup', '学习桌面.lnk');
   const details = { target: executable, args: `"${appDirectory}"`, cwd: appDirectory, appUserModelId: appId };
+  const nativeTarget = path.join(appDirectory, 'native-bin', 'Xdc.NativeDesktop.exe');
   const samePath = (a, b) => a?.toLowerCase() === b.toLowerCase();
+  const readShortcut = file => fs.existsSync(file) ? shell.readShortcutLink(file) : null;
+
+  function useNativeLink(link) {
+    return link?.appUserModelId === appId && samePath(link.target, nativeTarget) && fs.existsSync(nativeTarget);
+  }
+
+  function otherShortcut(file) {
+    try { return readShortcut(file === startup ? startMenu : startup); }
+    catch { return null; }
+  }
 
   function setShortcut(file, enabled) {
-    const existing = fs.existsSync(file) ? shell.readShortcutLink(file) : null;
+    const existing = readShortcut(file);
     if (existing && existing.appUserModelId !== appId &&
         !(samePath(existing.target, details.target) && existing.args === details.args)) {
       throw new Error('同名的启动快捷方式已被其他应用使用。');
@@ -18,11 +29,15 @@ export function createWindowsLaunchEntries({ app, shell, appId, appDirectory, ex
       if (existing) fs.unlinkSync(file);
       return;
     }
-    if (existing && samePath(existing.target, details.target) && existing.args === details.args &&
-        samePath(existing.cwd, details.cwd) && existing.appUserModelId === appId) return;
+    // Electron can share the settings without taking over an installed native entry.
+    const next = useNativeLink(existing) || useNativeLink(otherShortcut(file))
+      ? { ...details, target: nativeTarget, args: '--desktop ' + details.args }
+      : details;
+    if (existing && samePath(existing.target, next.target) && existing.args === next.args &&
+        samePath(existing.cwd, next.cwd) && existing.appUserModelId === appId) return;
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    if (!shell.writeShortcutLink(file, details)) throw new Error('无法写入启动快捷方式。');
+    if (!shell.writeShortcutLink(file, next)) throw new Error('无法写入启动快捷方式。');
   }
 
   function setStartup(enabled, { respectWindowsApproval = false } = {}) {

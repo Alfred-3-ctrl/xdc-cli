@@ -121,6 +121,8 @@ internal sealed partial class GlassWindow : NativeWindow, IDisposable
         tint.IsVisible = enabled;
     }
 
+    public void SetBlurEnabled(bool enabled) => blur.IsVisible = enabled;
+
     public void SetTint(Color color) =>
         tintBrush.Color = Windows.UI.Color.FromArgb(color.A, color.R, color.G, color.B);
 

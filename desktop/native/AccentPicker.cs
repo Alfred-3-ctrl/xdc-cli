@@ -165,6 +165,7 @@ internal sealed class AccentPicker : Form
         Controls.Add(done);
         AcceptButton = done;
         ActiveControl = plane;
+        AttachRightClickCancel(this);
         Synchronize();
 
         TextBox AddInput(string label, int left, int width, int length, out Label caption)
@@ -198,6 +199,20 @@ internal sealed class AccentPicker : Form
         DialogResult = DialogResult.Cancel;
         Close();
         return true;
+    }
+
+    private void AttachRightClickCancel(Control root)
+    {
+        root.MouseUp += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right) return;
+            DialogResult = DialogResult.Cancel;
+            Close();
+        };
+        foreach (Control child in root.Controls)
+        {
+            if (child is not TextBox) AttachRightClickCancel(child);
+        }
     }
 
     private static bool TryChannel(TextBox field, int max, out int channel) =>

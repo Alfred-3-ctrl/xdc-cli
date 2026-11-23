@@ -1,6 +1,7 @@
 import {
-  DEFAULT_DESKTOP, clamp, isHex, normalizeDesktop, normalizeLook, normalizeShortcut, applyLook,
+  DEFAULT_DESKTOP, SWATCHES, clamp, isHex, normalizeDesktop, normalizeLook, normalizeShortcut, applyLook,
 } from './appearance.js';
+import { createAccentPicker } from './accent-picker.js';
 import {
   hero, loadState, overview, coursesView, courseEditorView, courseView, assignmentView, sessionView,
   downloadsView, settingsView, appearanceView, authView,
@@ -10,6 +11,7 @@ const root = document.getElementById('xdc-glass');
 const panel = root.querySelector('[data-window]');
 const main = root.querySelector('[data-content]');
 const notice = root.querySelector('[data-notice]');
+const picker = createAccentPicker(root.querySelector('[data-popover]'), setAccent, window.EyeDropper);
 const desktop = window.xdc;
 const store = new Map();
 let route = { name: 'overview' };
@@ -101,6 +103,10 @@ function render() {
     else button.removeAttribute('aria-current');
   }
   main.innerHTML = progress ? pages[route.name]() + status : status + pages[route.name]();
+  for (const swatch of main.querySelectorAll('[data-swatch]')) {
+    swatch.style.backgroundColor = swatch.dataset.swatch;
+  }
+  updateAppearanceFeedback();
   focusAfterRender(active?.dataset.action, active?.dataset.pref);
 }
 
@@ -137,6 +143,7 @@ function loadPage(refresh = false) {
 }
 
 function navigate(next, behavior = 'push') {
+  picker.close();
   discardCourseEditor();
   if (behavior === 'push') history.push(route);
   else if (behavior === 'root') history = [];
@@ -213,6 +220,8 @@ function updateAppearanceFeedback() {
   const button = main.querySelector('[data-action=save-ui]');
   if (!button) return;
   button.disabled = saving || !appearanceChanged();
+  const customSwatch = main.querySelector('[data-action=open-picker]');
+  if (customSwatch) customSwatch.disabled = saving;
   main.querySelector('[data-changes]').textContent = saving ? '正在保存' : appearanceChanged() ? '未保存' : '';
 }
 
@@ -225,12 +234,25 @@ function refreshGeometryText() {
 function reflectPreferences() {
   applyLook(root, prefs.look);
   panel.classList.toggle('unlocked', !prefs.locked);
+  for (const swatch of main.querySelectorAll('[data-swatch]')) {
+    swatch.setAttribute('aria-pressed', String(prefs.look.accent === swatch.dataset.swatch));
+  }
+  const customSw = main.querySelector('.swatch.custom');
+  if (customSw) customSw.setAttribute('aria-pressed', String(!SWATCHES.includes(prefs.look.accent)));
   refreshGeometryText();
+}
+
+function setAccent(accent) {
+  prefs.look.accent = accent;
+  const input = main.querySelector('[data-hex]');
+  if (input && document.activeElement !== input) input.value = accent.toUpperCase();
+  reflectPreferences();
 }
 
 function previewGeometry() {
   const version = ++previewVersion;
-  const request = { geometry: { ...prefs.geometry }, locked: prefs.locked, radius: prefs.look.radius };
+  const { radius, blur } = prefs.look;
+  const request = { geometry: { ...prefs.geometry }, locked: prefs.locked, radius, blur };
   previewTask = previewTask.catch(() => {}).then(async () => {
     if (version !== previewVersion) return;
     try {
@@ -352,7 +374,7 @@ async function runAuth(method, payload) {
   }
 }
 
-async function runAction(action) {
+async function runAction(action, button) {
   const [name, value, third] = action.split(':');
   if (name === 'back') return courseEditor ? finishCourseEditor() :
     navigate(history.pop() ?? { name: 'overview' }, 'replace');
@@ -385,6 +407,8 @@ async function runAction(action) {
   if (name === 'official') return invoke('desktop.openOfficial', { service: value === 'courses' ? 'learning' : value });
   if (name === 'appearance') return navigate({ name: 'appearance', tab: 'look' });
   if (name === 'settings-tab') return navigate({ ...route, tab: value }, 'replace');
+  if (name === 'swatch' && isHex(value)) return setAccent(value.toLowerCase());
+  if (name === 'open-picker' && !saving) return picker.open(prefs.look.accent, button);
   if (name === 'save-ui') return commitAppearance();
   if (name === 'reset-ui') return resetAppearance();
   if (name === 'lock') {
@@ -402,16 +426,11 @@ function onLookInput(input) {
   const key = input.dataset.look;
   if (key) {
     prefs.look[key] = normalizeLook(key, input.type === 'range' ? input.valueAsNumber : input.value);
-    if (key === 'accent') attributes('[data-hex]', 'value', prefs.look.accent.toUpperCase());
     const output = main.querySelector('[data-value=' + key + ']');
     if (output) output.textContent = prefs.look[key] + output.dataset.unit;
     reflectPreferences();
     if (key === 'radius') previewGeometry();
-  } else if (input.hasAttribute('data-hex') && isHex(input.value)) {
-    prefs.look.accent = input.value.toLowerCase();
-    attributes('[data-look=accent]', 'value', prefs.look.accent);
-    reflectPreferences();
-  }
+  } else if (input.hasAttribute('data-hex') && isHex(input.value)) setAccent(input.value.toLowerCase());
 }
 
 function onGeometryInput(input) {
@@ -426,6 +445,17 @@ function onGeometryInput(input) {
 }
 
 root.addEventListener('click', async (event) => {
+  const choice = event.target.closest('[data-look-choice]');
+  if (choice) {
+    const [key, val] = choice.dataset.lookChoice.split(':');
+    prefs.look[key] = normalizeLook(key, val);
+    for (const sibling of choice.parentElement.querySelectorAll('[data-look-choice]')) {
+      sibling.setAttribute('aria-pressed', String(sibling === choice));
+    }
+    reflectPreferences();
+    if (key === 'blur') await previewGeometry();
+    return;
+  }
   const button = event.target.closest('button');
   if (!button || courseEditor?.saving) return;
   if (button.dataset.nav) {
@@ -435,7 +465,7 @@ root.addEventListener('click', async (event) => {
   if (!button.dataset.action || button.getAttribute('aria-busy') === 'true') return;
   button.setAttribute('aria-busy', 'true');
   try {
-    await runAction(button.dataset.action);
+    await runAction(button.dataset.action, button);
   } catch (error) {
     toast(error.message || '操作失败');
   } finally {

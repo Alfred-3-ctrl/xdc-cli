@@ -1,7 +1,11 @@
 export const DEFAULT_LOOK = Object.freeze({
   scheme: 'dark', accent: '#0a5152', transparency: 74, scale: 92,
-  density: 'regular', navStyle: 'both', navAlign: 'center', radius: 30,
+  density: 'regular', navStyle: 'both', navAlign: 'center', radius: 30, blur: true,
 });
+
+export const SWATCHES = Object.freeze([
+  '#0a5152', '#245dd1', '#7a4fd6', '#c2410c', '#be185d', '#3f6212', '#57534e',
+]);
 
 export const DEFAULT_DESKTOP = Object.freeze({
   look: DEFAULT_LOOK,
@@ -11,6 +15,7 @@ export const DEFAULT_DESKTOP = Object.freeze({
 
 export const options = {
   scheme: { system: '跟随系统', light: '浅色', dark: '深色' },
+  blur: { true: '实时模糊', false: '纯透明' },
   density: { compact: '紧凑', regular: '标准', comfortable: '宽松' },
   navStyle: { both: '图标与文字', text: '仅文字', icons: '仅图标' },
   navAlign: { left: '靠左', center: '居中', right: '靠右' },
@@ -23,6 +28,7 @@ export const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, ch 
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
 export function normalizeLook(key, value) {
+  if (key === 'blur') return value !== false && value !== 'false';
   if (Object.hasOwn(options, key) && Object.hasOwn(options[key], value)) return value;
   if (key === 'accent' && isHex(value)) return value.toLowerCase();
   if (Object.hasOwn(ranges, key) && Number.isFinite(value)) return clamp(Math.round(value), ...ranges[key]);
@@ -68,6 +74,7 @@ function readableAccent(color, surface, target) {
 
 export function applyLook(root, look) {
   root.dataset.scheme = look.scheme;
+  root.dataset.blur = String(look.blur);
   root.dataset.navStyle = look.navStyle;
   root.dataset.navAlign = look.navAlign;
   const spacing = { compact: [44, 6], regular: [54, 9], comfortable: [66, 12] }[look.density];

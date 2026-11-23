@@ -1,0 +1,55 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>学习桌面 · UI 原型（合成数据）</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="wallpaper" data-wall="bright"></div>
+
+<aside id="review" aria-label="评审控制台（不属于组件）">
+  <h1>评审控制台</h1>
+  <p class="hint">仅用于评审，不属于组件。全部为合成数据。</p>
+  <label>桌面背景
+    <select id="r-wall">
+      <option value="bright">亮色壁纸</option>
+      <option value="dark">暗色壁纸</option>
+      <option value="contrast">高对比条纹</option>
+      <option value="windows">背后有窗口</option>
+    </select>
+  </label>
+  <label>模拟状态
+    <select id="r-state">
+      <option value="normal">正常</option>
+      <option value="expired">登录失效</option>
+      <option value="uu">UU 运行中（暂停）</option>
+      <option value="empty">空状态（无课程/作业）</option>
+      <option value="loading">加载中</option>
+    </select>
+  </label>
+  <label class="check"><input type="checkbox" id="r-download"> 模拟下载进行中</label>
+  <label class="check"><input type="checkbox" id="r-many"> 30 门模拟课程</label>
+  <label class="check"><input type="checkbox" id="r-noblur"> 降级：关闭实时模糊</label>
+  <button id="r-reset" type="button">清除已保存偏好</button>
+  <div class="saved-dump"><strong>已保存（localStorage）</strong><pre id="r-saved"></pre></div>
+</aside>
+
+<main id="stage">
+  <section id="widget" aria-label="学习桌面">
+    <div class="glass" aria-hidden="true"></div>
+    <div class="ui">
+    <header id="chrome-top"></header>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <div id="scroller"><div id="content"></div></div>
+    <nav id="dock" aria-label="主导航"></nav>
+    <div id="popover-layer"></div>
+    </div>
+  </section>
+  <p class="caption">460 × 700 DIP · 设计原型，不代表最终渲染技术</p>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

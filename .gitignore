@@ -9,3 +9,5 @@ node_modules/
 /desktop/native-bin/
 /desktop/native/bin/
 /desktop/native/obj/
+/prototypes/*/bin/
+/prototypes/*/obj/

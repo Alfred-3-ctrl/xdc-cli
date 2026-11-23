@@ -93,6 +93,7 @@ async function launch() {
   let shortcutRegistered;
   let lastWindowBounds = prefs.geometry;
   let cornerRadius = prefs.look.radius;
+  let blurEnabled = prefs.look.blur;
   let shapeKey;
   const pickedDirectories = new Set();
   const emit = (event) => {
@@ -151,6 +152,29 @@ async function launch() {
     glass.close();
     glass = undefined;
   }
+  function applyGlassEffect(enabled) {
+    blurEnabled = enabled;
+    if (!enabled) {
+      closeGlass();
+      return;
+    }
+
+    const current = win;
+    if (!windows || glass || !current || current.isDestroyed() || !current.isVisible() || uuActive || quitting) return;
+    glass = startNativeGlass({
+      window: current, radius: cornerRadius,
+      onReady({ handle, pid }) {
+        if (current !== win || current.isDestroyed() || !blurEnabled || uuActive || quitting) return;
+        monitor?.setBackdrop(handle, pid);
+        placeOnDesktop(current);
+      },
+      onExit({ reason }) {
+        if (current !== win || !blurEnabled || uuActive || quitting) return;
+        monitor?.setBackdrop();
+        if (reason !== 'missing') console.warn('Native glass unavailable:', reason);
+      },
+    });
+  }
   function onShortcut() {
     if (!win?.isVisible()) return;
     prefs.locked = !prefs.locked;
@@ -195,6 +219,7 @@ async function launch() {
     });
     win = current;
     cornerRadius = prefs.look.radius;
+    blurEnabled = prefs.look.blur;
     shapeKey = undefined;
     current.removeMenu();
     applyLock(prefs.locked);
@@ -208,21 +233,7 @@ async function launch() {
       if (active) current.show();
       else current.showInactive();
       placeOnDesktop(current);
-      if (windows) {
-        glass = startNativeGlass({
-          window: current, radius: cornerRadius,
-          onReady({ handle, pid }) {
-            if (current !== win || current.isDestroyed() || uuActive || quitting) return;
-            monitor?.setBackdrop(handle, pid);
-            placeOnDesktop(current);
-          },
-          onExit({ reason }) {
-            if (current !== win || uuActive || quitting) return;
-            monitor?.setBackdrop();
-            if (reason !== 'missing') console.warn('Native glass unavailable:', reason);
-          },
-        });
-      }
+      applyGlassEffect(blurEnabled);
     });
     current.on('blur', () => placeOnDesktop(current));
     current.on('restore', () => placeOnDesktop(current));
@@ -279,6 +290,7 @@ async function launch() {
           cornerRadius = normalizeLook({ radius: payload.radius }, prefs.look).radius;
           glass?.setRadius(cornerRadius);
         }
+        if (typeof payload.blur === 'boolean') applyGlassEffect(payload.blur);
         if (typeof payload.locked === 'boolean') applyLock(payload.locked);
         if (payload.geometry && win) {
           const before = win.getContentBounds();
@@ -317,6 +329,7 @@ async function launch() {
         Object.assign(prefs, next);
         cornerRadius = next.look.radius;
         glass?.setRadius(cornerRadius);
+        applyGlassEffect(next.look.blur);
         if (win) win.setContentBounds(next.geometry);
         lastWindowBounds = next.geometry;
         applyLock(next.locked);
@@ -446,9 +459,7 @@ async function launch() {
     try {
       launchEntries.installStartMenu();
     } catch {}
-    if (prefs.startup) {
-      try { launchEntries.setStartup(true, { respectWindowsApproval: true }); } catch {}
-    }
+    try { launchEntries.setStartup(prefs.startup, { respectWindowsApproval: true }); } catch {}
     try {
       monitor = await startWindowsMonitor({
         userData, appDirectory,
