@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>Xdc.NativeDesktop</AssemblyName>
+    <ApplicationManifest>../../prototypes/native-glass/app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../prototypes/native-glass/CompositionInterop.cs" Link="CompositionInterop.cs" />
+    <Compile Include="../../prototypes/native-glass/GaussianBlurDescription.cs" Link="GaussianBlurDescription.cs" />
+    <Compile Include="../../prototypes/native-glass/GlassWindow.cs" Link="GlassWindow.cs" />
+  </ItemGroup>
+</Project>

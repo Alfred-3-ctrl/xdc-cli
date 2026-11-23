@@ -430,6 +430,8 @@ export function createDesktopAuth({ safeStorage, userData, credentialPath, platf
 
   return {
     status, login, loginSaved, logout, forget, importCookie, getApi, withClassroom,
+    // Keep the retry guard when the native desktop is eligible to retire its backend.
+    canRelease: () => !autoLoginBlocked,
     scope: (service = 'courses') => sessionKeyFor(service, session(service), false),
     sessionKey: (service = 'courses') => sessionKeyFor(service, session(service)),
     handle(method, payload) {

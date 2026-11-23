@@ -1,0 +1,7 @@
+{
+  "name": "xdc-desktop-native-service",
+  "productName": "学习桌面",
+  "private": true,
+  "type": "module",
+  "main": "main.js"
+}

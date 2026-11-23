@@ -7,7 +7,9 @@
   "main": "main.js",
   "scripts": {
     "build:native-glass": "dotnet publish ../prototypes/native-glass/NativeGlass.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=embedded -o ./native-glass",
-    "start": "electron ."
+    "build:native-desktop": "dotnet publish ./native/NativeDesktop.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=embedded -o ./native-bin",
+    "start": "node ./start-native.mjs",
+    "start:electron": "electron ."
   },
   "devDependencies": {
     "electron": "45.4.1"

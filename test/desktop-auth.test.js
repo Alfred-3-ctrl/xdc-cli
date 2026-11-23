@@ -118,6 +118,40 @@ test('desktop course reads retry after restoring one expired session through CAS
   assert.equal(renewals, 1);
 });
 
+test('the native desktop keeps the in-memory automatic-login retry guard after a challenge', async (t) => {
+  const { auth } = sandbox(t);
+  const cas = 'https://zjuam.zju.edu.cn';
+  let expired = false;
+  let captchaChecks = 0;
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = new URL(input);
+    if (url.origin === COURSES && url.pathname === '/user/index') {
+      return expired ? Response.redirect(cas + '/cas/login') :
+        new Response('courses', { headers: { 'set-cookie': 'session=fixture; Path=/; Secure' } });
+    }
+    if (url.origin === COURSES && url.pathname === '/api/my-courses') {
+      return expired ? new Response(null, { status: 401 }) : Response.json({ courses: [] });
+    }
+    if (url.origin === cas && url.pathname === '/cas/login') {
+      return new Response('<form id="fm1" action="/cas/login"><input name="execution" type="hidden" value="test"></form>');
+    }
+    if (url.origin === cas && url.pathname.endsWith('/getKaptchaStatus')) {
+      captchaChecks++;
+      return new Response('true');
+    }
+    if (url.hostname === 'tgmedia.cmc.zju.edu.cn') return new Response('unavailable', { status: 503 });
+    assert.fail('unexpected request');
+  });
+
+  await auth.login({ username: 'test-account', password: 'test-password', remember: true });
+  assert.equal(auth.canRelease(), true);
+  expired = true;
+  await assert.rejects(() => auth.getApi().getJson('/api/my-courses'), { code: 'CAPTCHA' });
+  assert.equal(auth.canRelease(), false);
+  await assert.rejects(() => auth.getApi().getJson('/api/my-courses'), { code: 'AUTH_REQUIRED' });
+  assert.equal(captchaChecks, 1);
+});
+
 test('a direct desktop classroom import uses the validated session without guessing the account', async (t) => {
   const { auth } = sandbox(t);
   t.mock.method(globalThis, 'fetch', async (input) => {

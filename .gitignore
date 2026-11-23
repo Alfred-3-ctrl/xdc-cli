@@ -6,3 +6,6 @@ node_modules/
 *session.json.*.tmp
 .probe/
 /desktop/native-glass/
+/desktop/native-bin/
+/desktop/native/bin/
+/desktop/native/obj/

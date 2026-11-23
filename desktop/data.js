@@ -621,6 +621,11 @@ export class DesktopData {
     return this.#active !== null;
   }
 
+  /** A short-lived desktop host can release the service when no session-only state would be lost. */
+  canRelease() {
+    return !this.#active && !this.#jobs.length && !this.#manualPaused && !this.#quietPaused && !this.#transient.size;
+  }
+
   resume() {
     this.#quietPaused = false;
     this.#pump();

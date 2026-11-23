@@ -6,6 +6,29 @@ using Windows.UI.Composition.Desktop;
 
 namespace Xdc.NativeGlass;
 
+internal sealed class GlassComposition : IDisposable
+{
+    public const string BackdropSource = "Backdrop";
+
+    private readonly DispatcherQueueController? queue = CompositionInterop.EnsureDispatcherQueue();
+    private CompositionEffectFactory? blurFactory;
+    private bool disposed;
+
+    public Compositor Compositor { get; } = new();
+
+    public CompositionEffectFactory BlurFactory => blurFactory ??= Compositor.CreateEffectFactory(
+        new GaussianBlurDescription(new CompositionEffectSourceParameter(BackdropSource), 18f));
+
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        blurFactory?.Dispose();
+        Compositor.Dispose();
+        GC.KeepAlive(queue);
+    }
+}
+
 internal sealed partial class GlassWindow : NativeWindow, IDisposable
 {
     private const int UseHostBackdropBrush = 17;
@@ -17,8 +40,8 @@ internal sealed partial class GlassWindow : NativeWindow, IDisposable
     private const uint NextWindow = 2;
 
     private readonly bool passive;
-    private readonly DispatcherQueueController? queue;
-    private readonly Compositor compositor;
+    private readonly GlassComposition composition;
+    private readonly bool ownsComposition;
     private readonly DesktopWindowTarget target;
     private readonly ContainerVisual panel;
     private readonly CompositionRoundedRectangleGeometry shape;
@@ -35,11 +58,12 @@ internal sealed partial class GlassWindow : NativeWindow, IDisposable
     private bool visible;
     private bool disposed;
 
-    public GlassWindow(nint owner, bool passive = false)
+    public GlassWindow(nint owner, bool passive = false, GlassComposition? shared = null)
     {
         this.passive = passive;
-        queue = CompositionInterop.EnsureDispatcherQueue();
-        compositor = new Compositor();
+        ownsComposition = shared is null;
+        composition = shared ?? new GlassComposition();
+        var compositor = composition.Compositor;
         try
         {
             CreateHandle(new CreateParams
@@ -65,10 +89,9 @@ internal sealed partial class GlassWindow : NativeWindow, IDisposable
             panel.Clip = clip;
 
             backdropBrush = compositor.CreateHostBackdropBrush();
-            var description = new GaussianBlurDescription(new CompositionEffectSourceParameter("Backdrop"), 18f);
-            blurFactory = compositor.CreateEffectFactory(description);
+            blurFactory = composition.BlurFactory;
             blurBrush = blurFactory.CreateBrush();
-            blurBrush.SetSourceParameter("Backdrop", backdropBrush);
+            blurBrush.SetSourceParameter(GlassComposition.BackdropSource, backdropBrush);
             blur = compositor.CreateSpriteVisual();
             blur.Brush = blurBrush;
 
@@ -81,8 +104,7 @@ internal sealed partial class GlassWindow : NativeWindow, IDisposable
         }
         catch
         {
-            if (Handle != 0) DestroyHandle();
-            compositor.Dispose();
+            Dispose();
             throw;
         }
     }
@@ -98,6 +120,9 @@ internal sealed partial class GlassWindow : NativeWindow, IDisposable
         blur.IsVisible = enabled;
         tint.IsVisible = enabled;
     }
+
+    public void SetTint(Color color) =>
+        tintBrush.Color = Windows.UI.Color.FromArgb(color.A, color.R, color.G, color.B);
 
     public string? ReadEffectStatus()
     {
@@ -183,20 +208,24 @@ internal sealed partial class GlassWindow : NativeWindow, IDisposable
     {
         if (disposed) return;
         disposed = true;
-        target.Root = null;
-        tint.Dispose();
-        tintBrush.Dispose();
-        blur.Dispose();
-        blurBrush.Dispose();
-        blurFactory.Dispose();
-        backdropBrush.Dispose();
-        clip.Dispose();
-        shape.Dispose();
-        panel.Dispose();
-        target.Dispose();
-        compositor.Dispose();
-        if (Handle != 0) DestroyHandle();
-        GC.KeepAlive(queue);
+        try
+        {
+            if (target is not null) target.Root = null;
+            tint?.Dispose();
+            tintBrush?.Dispose();
+            blur?.Dispose();
+            blurBrush?.Dispose();
+            backdropBrush?.Dispose();
+            clip?.Dispose();
+            shape?.Dispose();
+            panel?.Dispose();
+            target?.Dispose();
+        }
+        finally
+        {
+            if (Handle != 0) DestroyHandle();
+            if (ownsComposition) composition.Dispose();
+        }
     }
 
     [LibraryImport("dwmapi.dll")]

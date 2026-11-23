@@ -4,20 +4,24 @@
 
 ## Windows 学习桌面
 
-在仓库根目录安装依赖并启动组件。安装桌面依赖需要 Node.js 22.12 或更高版本。
+在仓库根目录安装依赖、构建并启动原生桌面。需要 Windows 11 22H2 或更新版本、Node.js 22.12 或更新版本，以及 x64 .NET 10 SDK 和 Desktop Runtime。
 
 ```powershell
 npm ci
 npm --prefix desktop ci
-npm --prefix desktop run build:native-glass
+npm --prefix desktop run build:native-desktop
 npm --prefix desktop start
 ```
 
-组件支持总览、课程详情和下载队列。它复用 CLI 的本地会话，首次登录可以选择让 Windows 加密保存统一认证凭据。设置页提供外观、窗口位置和尺寸、布局快捷键、下载目录及登录 Windows 时启动。首次运行会添加「学习桌面」开始菜单入口。
+原生窗口支持总览、课程可见性、课程和作业详情、智云课堂关联及 PDF 导出、课件下载和下载队列。它复用 CLI 的本地会话，也兼容已有的 Windows 加密登录信息。设置页提供外观、窗口位置和尺寸、布局快捷键、下载目录及登录 Windows 时启动。日常启动会更新「学习桌面」的开始菜单入口和已启用的启动入口。
 
-原生玻璃需要 Windows 11 22H2 或更新版本及 x64 .NET 10 Desktop Runtime。构建时用 .NET 10 SDK 运行 `build:native-glass`，生成的合成程序由学习桌面启动。圆角和透明度仍在原外观设置里调整。原生程序缺失或系统不允许运行时，组件使用透明圆角。独立原型和签名说明见 [原生玻璃](prototypes/native-glass/README.md)。
+原生程序 `desktop/native-bin/Xdc.NativeDesktop.exe` 在同一个进程里绘制界面和原生玻璃。圆角、玻璃透明度和布局在设置里实时预览。登录、课程和导出由按需启动的无窗口服务处理，继续使用原有业务逻辑和加密存储。没有待保留的下载或会话状态时，服务会在空闲后退出。已有下载队列时，服务会保留当前会话的下载状态。
 
-Windows 下由本机辅助进程检测 `uu.exe`。运行 UU 时组件收起，正在处理的文件完成后退出。UU 退出后组件恢复，排队任务继续。辅助进程首次运行时使用 Windows 自带的 .NET Framework 编译器构建。
+原生宿主会在 Windows 桌面层定位组件，并检查当前 Windows 会话中的 `uu.exe`。UU 运行时组件收起并释放玻璃，正在处理的文件完成后暂停队列。UU 退出后组件和队列恢复。
+
+启用智能应用控制的设备按本机策略运行原生程序。需要预先签名时，用受信任的 Authenticode 证书为 `Xdc.NativeDesktop.exe` 添加签名和 RFC 3161 时间戳，再用 SignTool 验证。隔离测试可通过 `npm --prefix desktop start -- --profile <独立目录>` 启动。该模式使用独立的桌面设置，默认在此目录内存放测试会话，并且跳过开始菜单和自启入口的改写。
+
+保留的 Electron 桌面可通过 `npm --prefix desktop run start:electron` 启动。其玻璃助手仍用 `npm --prefix desktop run build:native-glass` 构建，参见 [原生玻璃原型](prototypes/native-glass/README.md)。同一个日常配置应由一个桌面版本使用。
 
 - 命令：**`xdc`**（别名 `xzzd`）
 - 认证：浙大统一身份认证（CAS + Keycloak）
