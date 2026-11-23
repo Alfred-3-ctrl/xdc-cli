@@ -1,5 +1,5 @@
 // Electron scales window-local logical coordinates to the monitor's DPI.
-// Use horizontal bands to clip the acrylic behind the web view to its CSS radius.
+// Keep pointer events within the visible rounded panel.
 export function roundedWindowShape(windowBounds, contentBounds, radius) {
   const { width, height } = contentBounds;
   const x = contentBounds.x - windowBounds.x;

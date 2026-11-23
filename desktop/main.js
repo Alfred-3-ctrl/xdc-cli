@@ -133,9 +133,7 @@ async function launch() {
       win.setShape(roundedWindowShape(outer, content, cornerRadius));
       shapeKey = key;
     } catch {
-      // Avoid drawing a system backdrop outside the web view's rounded mask.
       shapeKey = undefined;
-      try { win.setBackgroundMaterial('none'); } catch {}
       try { win.setShape([]); } catch {}
     }
   }
@@ -178,6 +176,8 @@ async function launch() {
       ...bounds, frame: false, transparent: true, hasShadow: false, show: false, skipTaskbar: true, useContentSize: true,
       maximizable: false, fullscreenable: false, minimizable: false, alwaysOnTop: false,
       minWidth: Math.min(320, bounds.width), minHeight: Math.min(520, bounds.height),
+      // A system backdrop can fill the rectangular bounds beyond the renderer's rounded alpha.
+      ...(windows && { backgroundMaterial: 'none' }),
       backgroundColor: '#00000000',
       title: '学习桌面',
       webPreferences: {
@@ -189,9 +189,6 @@ async function launch() {
     cornerRadius = prefs.look.radius;
     shapeKey = undefined;
     current.removeMenu();
-    if (windows && Number(process.getSystemVersion().split('.').at(-1)) >= 22621) {
-      try { current.setBackgroundMaterial('acrylic'); } catch {}
-    }
     applyLock(prefs.locked);
     current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     current.webContents.on('will-navigate', (event, target) => {
