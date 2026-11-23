@@ -82,7 +82,9 @@ internal sealed partial class LearningWindow
         return ReadBusinessPage("我的课程", () => CallAsync("courses.list", new { refresh }), data =>
         {
             BeginPage("我的课程");
-            AddContent(ActionButton("编辑", Go(() => ShowCourseEditor(false)), true));
+            var edit = (GlassButton)ActionButton("编辑", Go(() => ShowCourseEditor(false)), true);
+            edit.UseGlassBackground = true;
+            AddContent(edit);
             DrawItems(Items(data, "courses"), "暂无显示的课程", course =>
                 Row(Field(course, "name", "课程"), CourseLabels(course),
                     BusinessAction(() => OpenCourse(Field(course, "id"), "summary")), "›"));

@@ -15,7 +15,8 @@ internal sealed partial class LearningWindow : Form
     private readonly DesktopLifecycle lifecycle;
     private readonly GlassComposition composition;
     private readonly Panel header = new() { BackColor = CanvasKey };
-    private readonly FlowLayoutPanel body = new() { BackColor = CanvasKey, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
+    private readonly ContentScrollPanel content = new(CanvasKey);
+    private FlowLayoutPanel body => content.Body;
     private readonly FlowLayoutPanel dock = new() { BackColor = CanvasKey, WrapContents = false };
     private readonly Label status = new() { AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Visible = false };
     private readonly Timer idleTimer = new() { Interval = 20000 };
@@ -27,6 +28,7 @@ internal sealed partial class LearningWindow : Form
     private readonly Dictionary<Control, Font> ownedFonts = [];
     private Page? page;
     private GlassWindow? glass;
+    private GlassContentInput? glassContentInput;
     private DesktopPreferences saved;
     private DesktopPreferences prefs;
     private Func<Task>? pageAfterStart;
@@ -81,7 +83,7 @@ internal sealed partial class LearningWindow : Form
         AutoScaleMode = AutoScaleMode.None;
         BackColor = TransparencyKey = CanvasKey;
         Bounds = SavedPixelBounds();
-        Controls.Add(body);
+        Controls.Add(content);
         Controls.Add(header);
         Controls.Add(dock);
         Controls.Add(status);
@@ -150,6 +152,7 @@ internal sealed partial class LearningWindow : Form
     {
         if (closing || quiet || !Visible || !IsHandleCreated || glass is not null) return;
         glass = new GlassWindow(0, passive: true, shared: composition);
+        glassContentInput = new GlassContentInput(glass.Handle, content);
         lifecycle.SetBackdrop(glass.Handle);
         ApplyGlass();
         AlignGlass();
@@ -175,6 +178,8 @@ internal sealed partial class LearningWindow : Form
     private void ReleaseGlass()
     {
         lifecycle.SetBackdrop(0);
+        glassContentInput?.Dispose();
+        glassContentInput = null;
         glass?.Dispose();
         glass = null;
     }
@@ -354,7 +359,8 @@ internal sealed partial class LearningWindow : Form
             }
             dock.Bounds = dockBounds;
             status.SetBounds(gutter, Math.Max(top, dock.Top - Dip(32)), ClientSize.Width - 2 * gutter, Dip(31));
-            body.SetBounds(gutter, top, ClientSize.Width - 2 * gutter, Math.Max(1, dock.Top - top - Dip(12)));
+            content.SetBounds(gutter, top, ClientSize.Width - 2 * gutter, Math.Max(1, dock.Top - top - Dip(12)));
+            content.SetThumbColors(Mix(Chrome, Secondary, .56), Secondary);
             foreach (var item in wide) item.Width = ContentWidth;
             for (int i = 0; i < tools.Length; i++)
                 tools[i].Width = itemsWidth <= itemSpace ? desiredWidths[i] : Math.Max(1, desiredWidths[i] * itemSpace / itemsWidth);
@@ -363,7 +369,7 @@ internal sealed partial class LearningWindow : Form
         finally { inLayout = false; }
     }
 
-    private int ContentWidth => Math.Max(Dip(40), body.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
+    private int ContentWidth => Math.Max(Dip(40), content.ViewportBounds.Width);
 
     private void UpdateNavigation()
     {
@@ -668,7 +674,7 @@ internal sealed partial class LearningWindow : Form
         var item = (GlassButton)ActionButton(string.IsNullOrEmpty(subtitle) ? title : title + Environment.NewLine + subtitle,
             onClick);
         item.CornerRadius = 0;
-        item.BackColor = Mix(Sheet, Surface, .45);
+        item.UseGlassBackground = true;
         item.TextAlign = ContentAlignment.MiddleLeft;
         item.Padding = new Padding(Dip(9), 0, Dip(5), 0);
         item.Height = Dip(prefs.Look.Density switch { "compact" => 44, "comfortable" => 66, _ => 54 });

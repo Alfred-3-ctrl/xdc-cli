@@ -44,6 +44,8 @@ internal sealed class GlassButton : Button
     internal Color FocusColor { get; set; }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal int CornerRadius { get; set; } = 8;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal bool UseGlassBackground { get; set; }
 
     public GlassButton()
     {
@@ -70,8 +72,11 @@ internal sealed class GlassButton : Button
         else if (Enabled && hovered && !HoverColor.IsEmpty) fill = HoverColor;
 
         using var shape = GlassControlPainting.RoundedPath(surface, CornerRadius);
-        using var brush = new SolidBrush(GlassControlPainting.VisibleColor(fill));
-        e.Graphics.FillPath(brush, shape);
+        if (!UseGlassBackground)
+        {
+            using var brush = new SolidBrush(GlassControlPainting.VisibleColor(fill));
+            e.Graphics.FillPath(brush, shape);
+        }
 
         var outline = Focused && ShowFocusCues && !FocusColor.IsEmpty ? FocusColor : BorderColor;
         if (!outline.IsEmpty)
@@ -88,6 +93,48 @@ internal sealed class GlassButton : Button
         e.Graphics.Restore(state);
     }
 
+    protected override void WndProc(ref Message message)
+    {
+        if (!UseGlassBackground)
+        {
+            base.WndProc(ref message);
+            return;
+        }
+
+        // A keyed pixel can hit the glass HWND during release even though the pointer
+        // is still inside this button. Use its bounds for the captured click.
+        switch (message.Msg)
+        {
+            case 0x0201: // WM_LBUTTONDOWN
+            case 0x0203: // WM_LBUTTONDBLCLK
+                if (Enabled)
+                {
+                    FindForm()?.Activate();
+                    Focus();
+                    Capture = true;
+                    mousePressed = true;
+                }
+                return;
+            case 0x0202: // WM_LBUTTONUP
+                var cursor = GlassContentInput.MessagePoint(message.LParam);
+                bool clicked = mousePressed && ClientRectangle.Contains(cursor) &&
+                    (Parent is null || Parent.ClientRectangle.Contains(Parent.PointToClient(PointToScreen(cursor))));
+                mousePressed = false;
+                Capture = false;
+                if (clicked) PerformClick();
+                return;
+            default:
+                base.WndProc(ref message);
+                break;
+        }
+    }
+
+    protected override void OnMouseCaptureChanged(EventArgs e)
+    {
+        if (UseGlassBackground && !Capture) mousePressed = false;
+        base.OnMouseCaptureChanged(e);
+    }
+
     protected override void OnMouseEnter(EventArgs e)
     {
         base.OnMouseEnter(e);
@@ -99,7 +146,7 @@ internal sealed class GlassButton : Button
     {
         base.OnMouseLeave(e);
         hovered = false;
-        mousePressed = false;
+        if (!UseGlassBackground || !Capture) mousePressed = false;
         Invalidate();
     }
 
