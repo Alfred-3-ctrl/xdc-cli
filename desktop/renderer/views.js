@@ -77,21 +77,15 @@ function attachment(file, scope = 'materials') {
 }
 
 export function overview(data, authStatus) {
-  const disconnected = Object.entries(platforms).filter(([key]) => authStatus?.[key]?.state === 'signed-out');
-  const warning = disconnected.length ? '<div class="panel-note"><p class="subline">' +
-    e(disconnected.map(([, name]) => name).join('、')) + '尚未登录。</p>' + button('登录', 'auth', true) + '</div>' : '';
+  const disconnected = authStatus?.courses?.state === 'signed-out';
+  const warning = disconnected ? '<div class="panel-note"><p class="subline">学在浙大尚未登录。</p>' +
+    button('登录', 'auth', true) + '</div>' : '';
   const heading = hero('学习总览', dayFormat.format(new Date()));
-  const hasContent = [data.deadlines, data.upcoming, data.recent, data.newMaterials].some(items => items?.length);
-  if (disconnected.length === 2 && !hasContent) return heading + warning;
+  if (disconnected && !data.deadlines?.length && !data.newMaterials?.length) return heading + warning;
   return heading + warning + errorsFrom(data.errors) +
     group('未来 7 天', '作业截止', data.deadlines?.length ? list(data.deadlines.map(item =>
       row(item.title || '作业', item.course, 'assignment:' + item.course_id + ':' + item.id, formatDate(item.due_at))).join('')) :
       empty('暂无即将截止的作业')) +
-    group('近期课堂', '智云课堂', data.upcoming?.length ? list(data.upcoming.map(session =>
-      row(session.session_name || session.course_name, session.course_name, 'overview-session:' + session.session_id, session.date || '›')).join('')) :
-      empty('暂无近期课堂')) +
-    (data.recent?.length ? group('最近课堂', '智云课堂', list(data.recent.map(session =>
-      row(session.session_name || session.course_name, session.course_name, 'recent-session:' + session.session_id, session.date || '›')).join(''))) : '') +
     group('新课件', '学在浙大', data.newMaterials?.length ? list(data.newMaterials.map(file =>
       row(file.name || '附件', file.course_name, 'course:' + file.course_id + ':materials')).join('')) :
       empty('暂无新课件'));

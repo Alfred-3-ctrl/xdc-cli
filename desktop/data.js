@@ -342,61 +342,33 @@ export class DesktopData {
 
   async #overview(refresh) {
     const courseOwner = this.#sessionKey();
-    const classroomOwner = this.#sessionKey('classroom');
     const now = this.#now();
     const deadlines = [];
     const errors = [];
-    const earliest = dayAt(now - 7 * DAY);
-    const today = dayAt(now);
-    const latest = dayAt(now + 7 * DAY);
-    const months = [...new Set([earliest, today, latest].map((day) => day.slice(0, 7)))];
-    const classroomResults = collect(months, 2, (month) => this.#sessions(month, refresh));
-    const [coursesResult] = await Promise.allSettled([this.#courses(refresh)]);
-
-    if (coursesResult.status === 'fulfilled') {
-      const courses = coursesResult.value;
-      const assignmentLists = await collect(courses, 4, (course) => this.#assignments(course, refresh));
-      for (let index = 0; index < assignmentLists.length; index++) {
-        const result = assignmentLists[index];
-        if (result.status === 'rejected') {
-          errors.push({ source: 'learning', course_id: courses[index].id, ...errorInfo(result.reason) });
-          continue;
-        }
-        for (const assignment of result.value) {
-          const due = Date.parse(assignment.due_at);
-          if (assignment.submitted !== true && due >= now && due <= now + 7 * DAY) deadlines.push(assignment);
-        }
+    let courses = [];
+    try {
+      courses = await this.#courses(refresh);
+    } catch (error) {
+      errors.push({ source: 'learning', ...errorInfo(error) });
+    }
+    const assignmentLists = await collect(courses, 4, (course) => this.#assignments(course, refresh));
+    for (const [index, result] of assignmentLists.entries()) {
+      if (result.status === 'rejected') {
+        errors.push({ source: 'learning', course_id: courses[index].id, ...errorInfo(result.reason) });
+        continue;
       }
-    } else {
-      errors.push({ source: 'learning', ...errorInfo(coursesResult.reason) });
+      for (const assignment of result.value) {
+        const due = Date.parse(assignment.due_at);
+        if (assignment.submitted !== true && due >= now && due <= now + 7 * DAY) deadlines.push(assignment);
+      }
     }
     deadlines.sort((a, b) => Date.parse(a.due_at) - Date.parse(b.due_at));
 
-    const classroom = new Map();
-    for (const result of await classroomResults) {
-      if (result.status === 'rejected') {
-        const info = errorInfo(result.reason);
-        if (!errors.some((error) => error.source === 'classroom' && error.code === info.code)) {
-          errors.push({ source: 'classroom', ...info });
-        }
-        continue;
-      }
-      for (const session of result.value) {
-        if (session.date && session.date >= earliest && session.date <= latest) {
-          classroom.set(`${session.course_id}/${session.session_id}`, session);
-        }
-      }
-    }
-    const upcoming = [...classroom.values()].filter((session) => session.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    const recent = [...classroom.values()].filter((session) => session.date < today)
-      .sort((a, b) => b.date.localeCompare(a.date));
     this.#checkOwner('courses', courseOwner);
-    this.#checkOwner('classroom', classroomOwner);
-    const currentCourses = new Set((coursesResult.value ?? []).map((course) => String(course.id)));
+    const currentCourses = new Set(courses.map((course) => String(course.id)));
     const newMaterials = (this.#courseState()?.recentMaterials ?? [])
       .filter((file) => currentCourses.has(String(file.course_id)) && Date.parse(file.discoveredAt) >= now - 7 * DAY);
-    return { deadlines, upcoming, recent, newMaterials, errors, refreshedAt: new Date(now).toISOString() };
+    return { deadlines, newMaterials, errors, refreshedAt: new Date(now).toISOString() };
   }
 
   #linkState(create = false) {

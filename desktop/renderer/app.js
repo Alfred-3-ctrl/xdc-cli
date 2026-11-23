@@ -365,10 +365,8 @@ async function runAction(action) {
   if (name === 'finish-course-edit') return saveCourseVisibility();
   if (name === 'tab') return navigate({ ...route, tab: value }, 'replace');
   if (name === 'assignment') return navigate({ name: 'assignment', courseId: value, assignmentId: third });
-  if (name === 'overview-session' || name === 'recent-session' || name === 'course-session') {
-    const data = store.get(resourceKey())?.data;
-    const sessions = name === 'course-session' ? data?.classroom?.sessions :
-      name === 'recent-session' ? data?.recent : data?.upcoming;
+  if (name === 'course-session') {
+    const sessions = store.get(resourceKey())?.data?.classroom?.sessions;
     const session = sessions?.find(item => String(item.session_id) === value);
     if (session) return navigate({ name: 'session', session });
     return;

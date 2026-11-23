@@ -22,9 +22,10 @@ async function workingDirectory(t) {
   return dir;
 }
 
-test('dashboard combines upcoming deadlines and nearby classes with newly observed course files', async (t) => {
+test('dashboard combines upcoming deadlines and newly observed course files without querying Classroom sessions', async (t) => {
   const dir = await workingDirectory(t);
   let owner = 'account1';
+  let classroomRequests = 0;
   let uploads = [{ id: 9, name: '原来.pdf' }];
   const statePath = path.join(dir, 'course-state.json');
   const auth = {
@@ -39,23 +40,23 @@ test('dashboard combines upcoming deadlines and nearby classes with newly observ
       courseDetail: async () => ({ ...course, raw: { hidden: true } }),
       courseMaterials: async () => [{ id: 42, type: 'material', uploads }],
     }),
-    withClassroom: (run) => run({
-      sessions: async (month) => [recent, upcoming].filter(({ date }) => date.startsWith(month)),
-    }),
+    withClassroom: (run) => {
+      classroomRequests++;
+      return run({ sessions: async () => [recent] });
+    },
   };
   const data = createDesktopData({ auth, statePath, now: () => NOW, defaultDownloadDir: dir });
   const original = await data.handle('course.detail', { courseId: '14' });
   assert.deepEqual(original.classroom.link, { classroomCourseId: '23', mode: 'automatic' });
   assert.equal(original.course.raw, undefined);
   assert.equal(original.materials.length, 1);
-  assert.deepEqual((await data.handle('overview.load')).newMaterials, []);
+  assert.deepEqual((await data.handle('overview.load', { refresh: true })).newMaterials, []);
+  assert.equal(classroomRequests, 1);
 
   uploads = [...uploads, { id: 10, name: '最新.pdf' }];
   await data.handle('course.detail', { courseId: '14', refresh: true });
   const dashboard = await data.handle('overview.load');
   assert.deepEqual(dashboard.deadlines.map(({ id }) => id), [400]);
-  assert.deepEqual(dashboard.upcoming, [upcoming]);
-  assert.deepEqual(dashboard.recent, [recent]);
   assert.deepEqual(dashboard.newMaterials.map(({ id }) => id), [10]);
   assert.deepEqual(dashboard.errors, []);
 
