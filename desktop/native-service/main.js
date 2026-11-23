@@ -164,12 +164,17 @@ function argument(name) {
   return index < 0 ? undefined : process.argv[index + 1];
 }
 
+function exitWithStartupError(message, code = 1) {
+  try { fs.writeSync(2, message + '\n'); }
+  catch { /* The native host may already have closed the diagnostic pipe. */ }
+  app.exit(code);
+}
+
 const profile = argument('--profile');
 const pipe = argument('--pipe');
 if (typeof profile !== 'string' || !path.isAbsolute(profile) || profile.includes('\0') ||
     !/^xdc-native-[a-f0-9]{32}$/i.test(pipe ?? '')) {
-  process.stderr.write('A valid absolute --profile and local --pipe are required.\n');
-  app.exit(2);
+  exitWithStartupError('A valid absolute --profile and local --pipe are required.', 2);
 } else {
   try {
     fs.mkdirSync(profile, { recursive: true });
@@ -181,9 +186,8 @@ if (typeof profile !== 'string' || !path.isAbsolute(profile) || profile.includes
       // starting this GUI-subsystem executable. No input uses console handles.
       const channel = net.createConnection('\\\\.\\pipe\\' + pipe);
       function fail() {
-        process.stderr.write('Unable to connect to the native desktop host.\n');
         channel.destroy();
-        app.exit(1);
+        exitWithStartupError('Unable to connect to the native desktop host.');
       }
       channel.once('error', fail);
       channel.once('connect', () => {
@@ -191,11 +195,9 @@ if (typeof profile !== 'string' || !path.isAbsolute(profile) || profile.includes
         try { launch(profile, channel); } catch { fail(); }
       });
     }).catch(() => {
-      process.stderr.write('Unable to initialize the desktop service.\n');
-      app.exit(1);
+      exitWithStartupError('Unable to initialize the desktop service.');
     });
   } catch {
-    process.stderr.write('Unable to initialize the desktop profile.\n');
-    app.exit(1);
+    exitWithStartupError('Unable to initialize the desktop profile.');
   }
 }
