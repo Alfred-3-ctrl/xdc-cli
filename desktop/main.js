@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, Notification, protocol, safeStorage, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, Notification, powerMonitor, protocol, safeStorage, screen, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -160,11 +160,17 @@ async function launch() {
     shortcutRegistered = shortcut;
     return true;
   }
+  function placeOnDesktop(window) {
+    if (!quitting && !uuActive && !window.isDestroyed() && window.isVisible() && !window.isFocused()) {
+      monitor?.placeOnDesktop(window);
+    }
+  }
   function showWindow({ active = false } = {}) {
     if (quitting || uuActive) return;
     if (win && !win.isDestroyed()) {
       if (active) { win.show(); win.focus(); }
-      else win.showInactive();
+      else if (!win.isVisible() || win.isMinimized()) win.showInactive();
+      placeOnDesktop(win);
       return;
     }
     const bounds = bound(lastWindowBounds);
@@ -196,9 +202,24 @@ async function launch() {
       applyWindowShape();
       if (active) current.show();
       else current.showInactive();
-      monitor?.keepAtBottom(current);
+      placeOnDesktop(current);
     });
-    current.on('blur', () => monitor?.keepAtBottom(current));
+    current.on('blur', () => placeOnDesktop(current));
+    current.on('restore', () => placeOnDesktop(current));
+    const recoverIfHidden = () => setImmediate(() => {
+      if (current === win && !current.isDestroyed() && (!current.isVisible() || current.isMinimized())) showWindow();
+    });
+    current.on('hide', recoverIfHidden);
+    current.on('minimize', recoverIfHidden);
+    current.on('close', event => {
+      if (!quitting) event.preventDefault();
+    });
+    current.on('session-end', () => {
+      quitting = true;
+      monitor?.releaseDesktop();
+      monitor?.disarm();
+      storeView();
+    });
     const updateBounds = () => {
       if (current !== win || current.isDestroyed()) return;
       applyWindowShape();
@@ -308,6 +329,8 @@ async function launch() {
   async function finishAndQuit() {
     if (quitting) return;
     quitting = true;
+    monitor?.releaseDesktop();
+    monitor?.disarm();
     storeView();
     win?.hide();
     try { await data.pause(); } finally { app.quit(); }
@@ -339,6 +362,7 @@ async function launch() {
     uuActive = active;
     const step = ++revision;
     if (!active) {
+      monitor?.disarm();
       if (pausedAt && Date.now() - pausedAt > 300000) view = undefined;
       pausedAt = 0;
       data.resume();
@@ -350,6 +374,7 @@ async function launch() {
       new Notification({ title: '学习桌面', body: '当前文件仍在处理，剩余队列将在 UU 退出后继续。' }).show();
     }
     if (win) {
+      monitor?.releaseDesktop();
       lastWindowBounds = win.getContentBounds();
       storeView();
       win.destroy();
@@ -357,7 +382,8 @@ async function launch() {
     try {
       await data.pause();
       if (!uuActive || step !== revision || quitting) return;
-      if (await monitor?.arm()) {
+      const armed = await monitor?.arm();
+      if (armed && uuActive && step === revision && !quitting) {
         quitting = true;
         app.quit();
       }
@@ -371,13 +397,22 @@ async function launch() {
     globalShortcut.unregisterAll();
     monitor?.disconnect();
   });
-  screen.on('display-removed', () => {
-    lastWindowBounds = bound(lastWindowBounds);
-    win?.setContentBounds(lastWindowBounds);
-  });
-  screen.on('display-metrics-changed', applyWindowShape);
+  function restoreDesktopPlacement() {
+    const current = win?.getContentBounds() ?? lastWindowBounds;
+    lastWindowBounds = bound(current);
+    if (win && Object.keys(lastWindowBounds).some(key => lastWindowBounds[key] !== current[key])) {
+      win.setContentBounds(lastWindowBounds);
+    }
+    applyWindowShape();
+    showWindow();
+  }
+  screen.on('display-added', restoreDesktopPlacement);
+  screen.on('display-removed', restoreDesktopPlacement);
+  screen.on('display-metrics-changed', restoreDesktopPlacement);
   registerShortcut(prefs.shortcut);
   if (windows) {
+    powerMonitor.on('resume', restoreDesktopPlacement);
+    powerMonitor.on('unlock-screen', restoreDesktopPlacement);
     try {
       launchEntries.installStartMenu();
     } catch {}
@@ -388,7 +423,7 @@ async function launch() {
       monitor = await startWindowsMonitor({
         userData, appDirectory,
         onUu: active => void onUu(active),
-        onExit: () => { if (!quitting) void onUu(false); },
+        onExit: reason => { if (!quitting) console.warn('Windows desktop helper unavailable:', reason); },
       });
       // Fallback for machines where the native monitor cannot report state.
       setTimeout(() => { if (!revision) void onUu(false); }, 3000).unref();

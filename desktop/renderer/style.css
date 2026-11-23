@@ -34,9 +34,9 @@
     height: 100%;
     border: 1px solid var(--window-edge);
     border-radius: var(--window-radius,25px);
+    clip-path: inset(0 round var(--window-radius,25px));
     background: var(--window-film);
     backdrop-filter: blur(24px) saturate(1.12);
-    box-shadow: 0 19px 46px -21px var(--lift), 0 0 0 1px var(--rule), inset 0 1px 0 var(--window-edge);
     overflow: hidden;
 
     container-type: inline-size;
@@ -58,9 +58,17 @@
   #xdc-glass .tool.back { font: 29px/1 "Segoe UI",sans-serif; }
   #xdc-glass .tool.back span { transform: translateY(-2px); }
   #xdc-glass .window-content {
+    --content-gutter: clamp(20px,6cqi,29px);
     overflow-y: auto; overscroll-behavior: contain; min-width: 0; min-height: 0;
-    scrollbar-width: thin;
-    padding: 58px clamp(20px,6cqi,29px) 102px;
+    margin-inline-end: 8px;
+    padding: 58px calc(var(--content-gutter) - 8px) 102px var(--content-gutter);
+  }
+  #xdc-glass .window-content::-webkit-scrollbar { width: 6px; }
+  #xdc-glass .window-content::-webkit-scrollbar-track {
+    margin-block: 57px 76px; background: transparent;
+  }
+  #xdc-glass .window-content::-webkit-scrollbar-thumb {
+    border-radius: 999px; background: light-dark(#525c716e,#edf4ff69);
   }
   #xdc-glass .xdc-window.scrolled::before {
     content: ""; position: absolute; z-index: 1; inset: 0 0 auto; height: 61px; pointer-events: none;
@@ -135,7 +143,6 @@
   #xdc-glass .pref-footer [data-changes] { margin-left: auto; }
   #xdc-glass .pref-footer button:disabled { color: var(--muted-ink); opacity: .62; }
   #xdc-glass input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; margin: 0; }
-\
   #xdc-glass .notice {
     position: absolute; z-index: 3; padding: 10px 13px; border-radius: 12px; border: 1px solid var(--rule);
     background: var(--dialog); color: var(--ink); box-shadow: 0 6px 18px -10px var(--lift);
