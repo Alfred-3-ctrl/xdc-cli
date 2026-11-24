@@ -24,8 +24,16 @@ if (-not $ElectronDistDirectory) {
     if ($LASTEXITCODE -ne 0) { throw "Downloading the locked Electron runtime failed ($LASTEXITCODE)." }
     $ElectronDistDirectory = Join-Path $electronPackage 'dist'
 }
-$build = & (Join-Path $root 'scripts\build-windows-package.ps1') -OutputDirectory $bundleDirectory `
-    -DotnetPath $DotnetPath -ElectronDistDirectory $ElectronDistDirectory
+$productName = 'ZJU Learning Desktop'
+$previousProduct = [Environment]::GetEnvironmentVariable('Product', 'Process')
+try {
+    # Set the PE product metadata through MSBuild without changing the project or assembly name.
+    [Environment]::SetEnvironmentVariable('Product', $productName, 'Process')
+    $build = & (Join-Path $root 'scripts\build-windows-package.ps1') -OutputDirectory $bundleDirectory `
+        -DotnetPath $DotnetPath -ElectronDistDirectory $ElectronDistDirectory
+} finally {
+    [Environment]::SetEnvironmentVariable('Product', $previousProduct, 'Process')
+}
 $hostPath = Join-Path $hostDirectory 'Xdc.NativeDesktop.exe'
 
 if ((Get-FileHash -LiteralPath $build.Archive).Hash -ne $build.Sha256) {
@@ -50,8 +58,8 @@ if ((Get-AuthenticodeSignature -LiteralPath $hostPath).Status -ne 'NotSigned') {
     throw 'The SignPath input must be the unsigned apphost produced by this build.'
 }
 $metadata = (Get-Item -LiteralPath $hostPath).VersionInfo
-if (-not $metadata.ProductName -or -not $metadata.ProductVersion) {
-    throw 'The apphost must provide both ProductName and ProductVersion.'
+if ($metadata.ProductName -cne $productName -or -not $metadata.ProductVersion) {
+    throw 'The apphost product metadata does not match the release project.'
 }
 
 [pscustomobject]@{

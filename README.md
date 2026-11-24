@@ -9,6 +9,7 @@
 ```powershell
 npm ci
 npm --prefix desktop ci
+node desktop/node_modules/electron/install.js
 npm --prefix desktop run build:native-desktop
 npm --prefix desktop start
 ```
@@ -34,10 +35,10 @@ npm --prefix desktop start
 
 [Code signing policy](CODE_SIGNING.md) · [隐私政策](PRIVACY.md)
 
-维护者可在 Windows 11 上用 Node.js 22.12+ 和 x64 .NET 10 SDK 构建。以下命令将应用、后台服务和依赖打包到独立目录，并生成 SHA256 校验文件。
+维护者可在 Windows 11 上用 Node.js 22.12+ 和 x64 .NET 10 SDK 构建。暂存脚本准备锁定版本的 Electron，再把应用、后台服务和依赖打包到 `dist/bundle`，同时生成 SHA-256 校验文件。
 
 ```powershell
-./scripts/build-windows-package.ps1 -OutputDirectory (Join-Path $PWD 'dist')
+./.github/scripts/Stage-WindowsRelease.ps1 -OutputDirectory (Join-Path $PWD 'dist')
 ```
 
 - 命令：**`xdc`**（别名 `xzzd`）
