@@ -11,9 +11,21 @@ $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).ProviderPa
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 $bundleDirectory = Join-Path $output 'bundle'
 $hostDirectory = Join-Path $output 'apphost'
-$parameters = @{ OutputDirectory = $bundleDirectory; DotnetPath = $DotnetPath }
-if ($ElectronDistDirectory) { $parameters.ElectronDistDirectory = $ElectronDistDirectory }
-$build = & (Join-Path $root 'scripts\build-windows-package.ps1') @parameters
+if (-not $ElectronDistDirectory) {
+    $electronDirectory = Join-Path $output 'electron'
+    New-Item -ItemType Directory -Path $electronDirectory | Out-Null
+    $manifestPaths = 'desktop\package.json', 'desktop\package-lock.json' | ForEach-Object { Join-Path $root $_ }
+    Copy-Item -LiteralPath $manifestPaths -Destination $electronDirectory
+    & npm.cmd --prefix $electronDirectory ci --include=dev --ignore-scripts --no-audit --no-fund | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Installing the locked Electron package failed ($LASTEXITCODE)." }
+    # Electron 42+ downloads the binary on demand rather than during npm install.
+    $electronPackage = Join-Path $electronDirectory 'node_modules\electron'
+    & node.exe (Join-Path $electronPackage 'install.js') | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Downloading the locked Electron runtime failed ($LASTEXITCODE)." }
+    $ElectronDistDirectory = Join-Path $electronPackage 'dist'
+}
+$build = & (Join-Path $root 'scripts\build-windows-package.ps1') -OutputDirectory $bundleDirectory `
+    -DotnetPath $DotnetPath -ElectronDistDirectory $ElectronDistDirectory
 $hostPath = Join-Path $hostDirectory 'Xdc.NativeDesktop.exe'
 
 if ((Get-FileHash -LiteralPath $build.Archive).Hash -ne $build.Sha256) {
