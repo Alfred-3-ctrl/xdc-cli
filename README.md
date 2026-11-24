@@ -1,8 +1,8 @@
-# xdc-cli · 学在浙大
+# ZJU Learning Desktop
 
-浙江大学学在浙大和智云课堂的 CLI，支持课件查询和导出。
+独立维护的 Windows 桌面组件和 `xdc` CLI，用于查询学在浙大和智云课堂的课程及导出课件。
 
-## Windows 学习桌面
+## Windows 桌面组件
 
 在仓库根目录安装依赖、构建并启动原生桌面。需要 Windows 11 22H2 或更新版本、Node.js 22.12 或更新版本，以及 x64 .NET 10 SDK 和 Desktop Runtime。
 
@@ -32,6 +32,8 @@ npm --prefix desktop start
 
 在 [GitHub Releases](https://github.com/Alfred-3-ctrl/xdc-cli/releases) 下载预构建 ZIP 后，将整个目录解压到固定位置，再运行 `desktop/native-bin/Xdc.NativeDesktop.exe`。运行所需组件随包提供，解压后查看 `README.txt`。不同设备的智能应用控制可能要求可信代码签名，包内的 `release.json` 记录原生宿主签名状态和源码提交。
 
+[Code signing policy](CODE_SIGNING.md) · [隐私政策](PRIVACY.md)
+
 维护者可在 Windows 11 上用 Node.js 22.12+ 和 x64 .NET 10 SDK 构建。以下命令将应用、后台服务和依赖打包到独立目录，并生成 SHA256 校验文件。
 
 ```powershell
@@ -45,6 +47,8 @@ npm --prefix desktop start
 本项目从 D32gang 的 [zju-cli/xzzd-cli](https://github.com/d32gang-steel/zju-cli/tree/d6d143fb22b1000472d1743f72620cb091e2a99d/xzzd-cli) 导入并独立维护。上游子项目在 `package.json` 中标注 MIT。接口记录见 [api.md](api.md)，Agent 用法见 [SKILL.md](SKILL.md)。
 
 智云接入和 WPS 导出参考了 PeiPei233 的 [zju-learning-assistant](https://github.com/PeiPei233/zju-learning-assistant/tree/a759541)。WPS 适配器保留了原作者的 MIT 声明。
+
+[MIT 许可证](LICENSE) · [第三方声明](NOTICE.md)
 
 ## 安装
 

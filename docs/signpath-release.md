@@ -1,6 +1,6 @@
-# 学习桌面 Windows 构建与 SignPath 签名
+# ZJU Learning Desktop Windows 构建与 SignPath 签名
 
-本流程构建学习桌面的 Windows x64 ZIP，通过 GitHub Actions 提供可下载的产物。它沿用 `scripts/build-windows-package.ps1`，包版本取自 `desktop/package.json`。SignPath 的签名目标是产品自己的运行入口 `Xdc.NativeDesktop.exe`。随包分发的 Electron 使用锁定版本的原始上游文件。
+本流程构建 ZJU Learning Desktop 的 Windows x64 ZIP，通过 GitHub Actions 提供可下载的产物。它沿用 `scripts/build-windows-package.ps1`，包版本取自 `desktop/package.json`。SignPath 的签名目标是产品自己的运行入口 `Xdc.NativeDesktop.exe`。随包分发的 Electron 使用锁定版本的原始上游文件。
 
 ## 构建未签名包
 
